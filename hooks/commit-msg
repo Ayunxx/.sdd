@@ -1,0 +1,118 @@
+#!/usr/bin/env python3
+"""
+SDD 命令层硬门禁 / commit-msg git hook —— 零 LLM，强制 commit message 走 Conventional Commits。
+
+与 Stop hook（gate_reminder.py，判断层、靠 LLM 执行）不同，这是【命令层】：
+git 在每次 commit 写完 message 后必跑本脚本，格式不合规直接 **拒绝提交**（退出码非 0）。
+即使绕过 Claude 手敲 git commit 也挡得住——这就是 README 里说"尚未内置"的最强一环。
+
+规范（Conventional Commits）：
+    <type>[optional scope][!]: <subject>
+
+    [optional body]
+    [optional footer(s)]
+
+  type      必填，取值：feat fix docs style refactor perf test build ci chore revert
+  scope     可选，括号内小写标识，如 (auth) (api)
+  !         可选，表示破坏性变更（也可在 footer 写 BREAKING CHANGE:）
+  subject   必填，冒号后一个空格 + 简述；建议祈使句、不以句号结尾
+
+  例：
+    feat(auth): 增加手机号登录
+    fix: 修正空购物车结算崩溃
+    refactor(api)!: 重命名 user 字段（破坏性）
+
+安全设计（fail-open，绝不无故卡住正常提交）：
+- 自动放行：merge / revert / fixup! / squash! / amend-autosquash 等特殊提交。
+- 自动放行：空消息或仅注释（git 自身会处理）。
+- 脚本自身异常一律放行——hook 出 bug 不能困住用户。
+- 只在「格式确实不合规」时拒绝，并打印清晰的修正提示。
+
+安装：本文件需放到项目 `.git/hooks/commit-msg` 且可执行（见 README「提交规范」一节）。
+关闭：删除 `.git/hooks/commit-msg`，或 `git commit --no-verify`（单次跳过）。
+"""
+import sys
+import re
+
+TYPES = ["feat", "fix", "docs", "style", "refactor",
+         "perf", "test", "build", "ci", "chore", "revert"]
+
+# <type>(scope)?!?: <subject>
+HEADER_RE = re.compile(
+    r"^(?P<type>" + "|".join(TYPES) + r")"
+    r"(?P<scope>\([^()\r\n]+\))?"
+    r"(?P<breaking>!)?"
+    r": (?P<subject>.+)$"
+)
+
+# 这些提交不校验（git 自动生成或特殊流程）
+SKIP_RE = re.compile(
+    r"^(Merge |Revert |fixup! |squash! |amend! )", re.IGNORECASE
+)
+
+MAX_HEADER = 100  # 标题硬上限，给得很宽松；只挡明显失控的超长行
+
+
+def allow():
+    sys.exit(0)
+
+
+def reject(first_line):
+    msg = (
+        "\n✗ SDD 提交门禁：commit message 不符合 Conventional Commits 规范。\n\n"
+        f"  你的标题：{first_line}\n\n"
+        "  应为：  <type>(<scope>)?: <subject>\n"
+        "  type ∈ " + " | ".join(TYPES) + "\n\n"
+        "  例：\n"
+        "    feat(auth): 增加手机号登录\n"
+        "    fix: 修正空购物车结算崩溃\n"
+        "    refactor(api)!: 重命名 user 字段（破坏性变更）\n\n"
+        "  修正后重新提交；确需跳过一次：git commit --no-verify\n"
+    )
+    sys.stderr.write(msg)
+    sys.exit(1)
+
+
+def main():
+    # git 把 commit message 文件路径作为第一个参数传入
+    if len(sys.argv) < 2:
+        allow()
+    try:
+        with open(sys.argv[1], "r", encoding="utf-8") as f:
+            content = f.read()
+    except Exception:
+        allow()  # 读不到文件 → 放行自保
+
+    # 取第一行非注释、非空内容作为标题
+    first_line = ""
+    for line in content.splitlines():
+        s = line.strip()
+        if not s or s.startswith("#"):
+            continue
+        first_line = line.rstrip()
+        break
+
+    if not first_line:
+        allow()  # 空消息：交给 git 自己处理
+    if SKIP_RE.match(first_line):
+        allow()  # merge/revert/fixup 等：放行
+
+    m = HEADER_RE.match(first_line)
+    if not m or not m.group("subject").strip():
+        reject(first_line)
+    if len(first_line) > MAX_HEADER:
+        sys.stderr.write(
+            f"\n✗ SDD 提交门禁：标题过长（{len(first_line)} > {MAX_HEADER} 字符）。"
+            "请精简标题，细节放正文。\n"
+        )
+        sys.exit(1)
+
+    allow()
+
+
+if __name__ == "__main__":
+    try:
+        main()
+    except Exception:
+        # 任何意外一律放行：门禁脚本本身绝不能困住提交
+        allow()
