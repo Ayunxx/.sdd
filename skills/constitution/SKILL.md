@@ -59,13 +59,15 @@ $ARGUMENTS
 - **Format（格式化）:** [如 `prettier --write .` / `ruff format .` / `gofmt -w .`]
 - **Lint:** [如 `eslint .` / `ruff check .` / `golangci-lint run`]
 - **Typecheck:** [如 `tsc --noEmit` / `mypy .`；无则 N/A]
-- **Test:** [如 `npm test` / `pytest -q`]
+- **Test（任务/功能级，实施终端循环用——尽量按改动范围跑、别退化成全量）:** [如 `npm test`（含范围）/ `pytest tests/<mod>` / `mvn -pl <module> -am test`。monorepo 务必给一条**只跑改动模块**的命令，否则实施终端每次都全量、又慢又抢了合并门的活]
+> ⚠️ **门分两层、别混**：上面的 Test 是【实施终端】的循环门禁（任务级 + `/sdd:verify` 功能级，尽量 scoped）；下面的 **Merge gate 是【主终端】`/sdd:worktree finish` 专属的全量跨功能回归**。**实施终端绝不跑全量合并门**——那是 finish 的事，在 feature 终端跑只是把 finish 的活提前到错地方、白拖慢。
 - **Config 文件:** [.editorconfig · 格式化/lint 配置 · `.gitattributes`（统一换行 LF/CRLF）]
 - **Error handling / Logging:** [统一约定]
 - **Maintainability（可维护性规则）:** [命名约定 · 单函数行数/圈复杂度上限 · DRY 禁重复、复用优先 · 分层与依赖方向 · 公共 API 注释要求]
 - **注释 / 标识符语言（Comment & identifier language）:** [显式钉死注释用哪种语言，否则隔离子代理默认写英文注释。如「注释用中文、标识符用英文」/「全英文」/「跟随现有代码库」。**生成本宪法时按已有代码库的实际注释语言探测填入；新项目无既有代码则询问用户后填，别留空**]
 - **Architecture fitness（架构适应度函数，自动守架构）:** [如 dependency-cruiser/import-linter 守依赖方向与禁止 import · eslint-boundaries 守分层 · jscpd 重复率阈值（如 >5% 失败）· 复杂度上限。架构靠工具守，不靠记忆——防后期侵蚀]
 - **Merge gate（合并门，防全局功能偏移）:** [合并到主干前必须跑**全量**：完整测试套件 + lint + typecheck + 上面的 fitness 全绿。任一老功能测试报红 = 新功能改坏了它，禁止合并]
+- **Merge gate 适用范围（按"是否入 main"判，不按功能大小）:** [**凡经 `/sdd:worktree finish` 合并进 main 的都必走合并门——含 lite**。理由：合并门防的是"改坏 main"，而**风险 ≠ 功能大小**（改一行公共代码也能炸全局）。**不按 lite/full 豁免**；成本担忧由上面「性能」的 cache 解决——门成本随 blast radius 自动伸缩，小改只重跑那点。**唯一近乎免门**：纯非代码改动（docs/注释/无测试覆盖的配置），门本身无可跑。Trivial 跳过 SDD 的直接改**不经 finish 故无门**，靠下个 feature 从最新 main 跑的合并门 + CI + commit-msg hook 兜底；若 trivial 碰了共享代码，应升级到 lite 走门。]
 - **Merge gate 性能（随规模可伸缩，别裸跑串行）:** [全量 ≠ 慢。**填的合并门命令必须带"缓存跳过未变 + 并行"**，否则模块一多就线性变慢、成为关键路径杀手。**零安全损失的两招**（优先）：① 构建缓存——按内容哈希跳过未变模块/包（等价于跑了、结果可证相同）：Maven `maven-build-cache-extension`(`.mvn/extensions.xml`)、Gradle `--build-cache`、Nx/Turborepo/Bazel 自带缓存、pytest `--cache`/go 包级测试缓存；② 并行——Maven `-T 1C`、Gradle `--parallel`、pytest `-n auto`、jest 默认分片（注意：共享外部资源的集成测试如 Testcontainers 并行需各自隔离实例，否则保持串行）。**愿意牺牲一点安全换更快的可选**：affected/incremental 只跑改动范围+下游（Maven `-pl <changed> -amd`、Nx/Turbo affected）、或分层（快门禁挡合并 + 全量挪 CI/nightly 异步兜底）——这两类弱化"全量即时"保证，按团队风险偏好选，默认不启用。]
 
 ## 4. Testing Discipline / 测试纪律（合并门的"牙"，必须硬）

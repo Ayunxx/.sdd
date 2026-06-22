@@ -207,6 +207,8 @@ your-project/
 | Small（1–3 文件、单一明确） | `/sdd:specify --lite` → 直接 `/sdd:implement` | **单个 `spec.md`**（需求+设计+任务三合一） |
 | Normal/Large（多文件、有不确定性） | 完整流程 | requirements/design/tasks |
 
+> ⚠️ **分级省的是"规格阶段"，不是"合并门"**：lite 一样会 merge 进 main、一样能改坏别的功能，所以 **lite 照走合并门**（凡入 main 必走，不按大小豁免）——别怕慢，门成本随改动范围由 cache 自动伸缩，lite 只动一两个模块、门很便宜。Trivial 直接改不经 finish 故无门，但**若碰到共享/跨模块代码就该升级到 lite 走门**（"小"是文件数小，不是风险小）。
+
 **② 对账后冻结，别永远同步老文档**
 - 实现期难免有业务/技术偏移——这些偏移**当场记入 design 的 `## Deviations` 段**，别让文档默默停更。
 - 合并前做一次 **reconcile（对账）**：把偏移回填进 requirements/design，使**冻结的规格 = 实际所建**（`/sdd:worktree finish` 已内置这步）。
