@@ -20,6 +20,7 @@ $ARGUMENTS
    - **Normal/Large**（多文件、有不确定性、需设计）→ 走完整流程（本命令默认）。
    - 用户带了 `--lite`、或你判断属 Small → 进 lite 分支（见步骤 4b）。**修改一个已上线/已归档的功能**：不要回去重写老规格——**新建一个小规格记录这次变更（delta）**（规格是决策记录，合并后冻结）。
    - **delta 必须标源（关键，否则归档时归不回源）**：识别出本规格是 delta 时，在它的头部写 **`Delta-of: MMM-target-slug`**（被修改的目标功能 ID，到 `specs/` 或 `specs/archive/` 里找）。delta **优先走 `--lite`**。这条标记是 `/sdd:worktree finish` 把 delta **物理归档进源目录** `specs/archive/MMM-target/deltas/` 的唯一依据——漏标 = 又散落成孤立 NNN。
+   - **delta 的测试要相称、复用源功能 harness（防过度测试）**：delta 多是小改，测试**只补"这次新增/改动行为"的用例，扩展源功能已有的测试类/测试基建**，绝不为一个增量重铺一套测试类（§4 测试相称性）。在 delta 规格的验收里就写明"扩展 `源XxxTest` 加用例"，别让下游 implementer 误以为要新建一堆测试。
 
 1. **读约束**：先读 `specs/constitution.md`（若存在）。需求不得违背宪法。若不存在，提示用户最好先 `/sdd:constitution`，但仍可继续。
 
