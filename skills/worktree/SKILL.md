@@ -2,7 +2,7 @@
 description: 并发隔离 / Manage git worktrees so multiple terminals (or parallel features) work in physically isolated directories — no more cross-terminal git reset clobbering. 每个 feature 一个分支+独立工作目录+一个终端，互不干扰。生命周期：start(建分支+worktree) → 干活 → finish(合并+清理)。
 argument-hint: "start <feature-slug> [from <base>] | list | finish <feature-slug> [--no-merge] | abort <feature-slug>"
 disable-model-invocation: true
-allowed-tools: Read, Glob, Bash(git *), Bash(ls *), Bash(pwd), Bash(cat *)
+allowed-tools: Read, Glob, Bash(git *), Bash(ls *), Bash(pwd), Bash(cat *), Bash([ *), Bash(command -v *), Bash(nohup *), Bash(x-terminal-emulator *), Bash(gnome-terminal *), Bash(konsole *), Bash(xterm *)
 ---
 
 # /sdd:worktree — 多终端并发隔离
@@ -31,9 +31,18 @@ $ARGUMENTS
 3. **并发安全地分配编号（防撞号）**：若传入的 slug 没带 `NNN` 前缀，就分配一个——编号 = 对 `specs/NNN-*` + `specs/archive/NNN-*` + **嵌套归档 delta `specs/archive/*/deltas/NNN-*` 与 `specs/*/deltas/NNN-*`**（嵌进源里的 delta 也占全局号，必须递归扫到）+ **`git branch --list 'sdd/*'`**（共享 .git，**含别的终端在建的**）+ `git worktree list` 的 NNN **取并集最大值 +1**，零填充三位。得到 `sdd/NNN-slug`。
 4. **创建前最后一道闸**：`git branch --list sdd/NNN-slug` **输出非空** = 已存在（被并发抢先）→ **编号 +1 重试**，直到输出为空。（用 `--list` 而非 `rev-parse --verify`：它永远 exit 0、靠输出判断，避免"分支不存在"的正常分叉被当成命令执行错误。）
 5. 执行：`git worktree add -b sdd/<NNN-slug> "../<repo>--<NNN-slug>" <base>`。**git 建分支是原子的=最终防线**：若因"分支已存在"失败（极限并发下被抢先）→ **编号 +1 重试**该命令，直到成功。
-6. 报告新目录绝对路径，并明确告诉用户：
-   > 👉 **打开一个新终端，cd 到该目录，在那里启动 Claude**，再跑 `/sdd:specify → … → /sdd:implement`（或 `/sdd:auto`）。本终端不要继续在这个 feature 上操作。
-   > 多个 feature 在并行时，随时 `/sdd:status` 看全局（谁在做哪个、进度、门禁健康）。
+6. **自动开一个新终端、cd 进新目录、启动 Claude**（不再只是口头提示用户手动开）：
+   - 前置判断：`[ -n "$DISPLAY$WAYLAND_DISPLAY" ]` 为真才尝试（无图形会话/纯 SSH 无转发 → 跳过，走本步最后的兜底文案）。
+   - 按顺序探测第一个存在的终端命令（`command -v <name>`），用它把命令**拼进 `cd "<dir>" && exec claude` 一整条字符串**里执行（不依赖各终端专有的 `--working-directory` 参数，靠 `cd` 保证跨终端一致）：
+     1. `x-terminal-emulator -e bash -c 'cd "<新目录绝对路径>" && exec claude'`
+     2. `gnome-terminal -- bash -c 'cd "<dir>" && exec claude'`
+     3. `konsole -e bash -c 'cd "<dir>" && exec claude'`
+     4. `xterm -e bash -c 'cd "<dir>" && exec claude'`
+   - 每条命令都用 `nohup ... >/dev/null 2>&1 & disown` 后台起，不阻塞本终端；GUI 进程分离后拿不到可靠 exit code，不必等待/校验。
+   - **报告仍然要给新目录绝对路径**（终端窗口可能被用户手动关掉，需要这条信息才能重新进入）。
+   - 若无 GUI 或探测不到任何已知终端命令 → 回退为原文案：
+     > 👉 **打开一个新终端，cd 到该目录，在那里启动 Claude**，再跑 `/sdd:specify → … → /sdd:implement`（或 `/sdd:auto`）。
+   - 本终端不要继续在这个 feature 上操作；多个 feature 并行时，随时 `/sdd:status` 看全局（谁在做哪个、进度、门禁健康）。
 
 ### `list`
 `git worktree list` 输出，并标注哪些是 SDD worktree（分支前缀 `sdd/`）、各自对应哪个 feature。
