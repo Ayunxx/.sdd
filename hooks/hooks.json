@@ -1,6 +1,6 @@
 {
   "//": "SDD hooks（随插件自动激活、零接入）：① 判断层门禁 gate_reminder（Stop 收工前唤醒 LLM 跑 /sdd:verify + 对账；仅有 specs/constitution.md 且有未提交改动时触发，循环安全、按改动状态节流、出错放行）。② 多终端心跳 status_report（SessionStart/UserPromptSubmit/Stop 每回合上报本终端在做哪个 feature/第几任务/忙闲，写共享 .git 下 sdd-runtime/，供 /sdd:status 聚合；仅 sdd/* 分支触发、纯写不阻塞、fail-open）。命令层硬门禁见 hooks.example.json。",
-  "//disable": "不想要某项：删掉对应的 hook 段即可（gate=Stop 里的 gate_reminder；心跳=三处 status_report），或在 plugin.json 移除 \"hooks\" 字段。若你的 Python 可执行名是 python3，把下面 command 的 python 全改成 python3。",
+  "//disable": "不想要某项：删掉对应的 hook 段即可（gate=Stop 里的 gate_reminder；心跳=三处 status_report），或在 plugin.json 移除 \"hooks\" 字段。需要 node 在 PATH 上（脚本为 Node.js，无外部依赖）。",
   "//perf": "心跳事件：SessionStart/UserPromptSubmit/Stop 管回合边界；PostToolUse 管【回合中途】刷新（修长回合/编排器盲区，并在工具=Workflow/Task/Agent 时打 delegating 兜底标）。插件 hook 会在【子代理上下文】运行（文档确认，带子代理 cwd），故 workflow/子代理在本 worktree 调工具时其 PostToolUse 会刷新同一心跳文件——长 workflow 期间心跳由子代理自己续命，delegating 标只是 worktree 隔离/不触发时的兜底。PostToolUse 非阻塞、开销低于 PreToolUse；非 sdd/* 分支立刻空跑退出。不想要 PostToolUse 开销：删它即可，回退纯每回合心跳。",
   "hooks": {
     "SessionStart": [
@@ -8,7 +8,7 @@
         "hooks": [
           {
             "type": "command",
-            "command": "python \"${CLAUDE_PLUGIN_ROOT}/hooks/status_report.py\" idle"
+            "command": "node \"${CLAUDE_PLUGIN_ROOT}/hooks/status_report.js\" idle"
           }
         ]
       }
@@ -18,7 +18,7 @@
         "hooks": [
           {
             "type": "command",
-            "command": "python \"${CLAUDE_PLUGIN_ROOT}/hooks/status_report.py\" working"
+            "command": "node \"${CLAUDE_PLUGIN_ROOT}/hooks/status_report.js\" working"
           }
         ]
       }
@@ -28,7 +28,7 @@
         "hooks": [
           {
             "type": "command",
-            "command": "python \"${CLAUDE_PLUGIN_ROOT}/hooks/status_report.py\" working"
+            "command": "node \"${CLAUDE_PLUGIN_ROOT}/hooks/status_report.js\" working"
           }
         ]
       }
@@ -38,11 +38,11 @@
         "hooks": [
           {
             "type": "command",
-            "command": "python \"${CLAUDE_PLUGIN_ROOT}/hooks/gate_reminder.py\""
+            "command": "node \"${CLAUDE_PLUGIN_ROOT}/hooks/gate_reminder.js\""
           },
           {
             "type": "command",
-            "command": "python \"${CLAUDE_PLUGIN_ROOT}/hooks/status_report.py\" idle"
+            "command": "node \"${CLAUDE_PLUGIN_ROOT}/hooks/status_report.js\" idle"
           }
         ]
       }

@@ -280,7 +280,7 @@ your-project/
 - 仅在 **SDD 项目**（有 `specs/constitution.md`）且**有未提交改动**时唤醒；
 - 灌回提醒："收工前请跑 constitution §3 门禁 + 对受影响 AC 跑 `/sdd:verify` + 偏离 design 就回填 `## Deviations` 对账"；
 - **循环安全**（`stop_hook_active` 守卫）+ **按改动状态节流**（同一状态只提醒一次）+ **出错一律放行**（绝不卡住会话）。
-- 关掉：删 `hooks/hooks.json` 的 Stop 段。Python 可执行名为 `python3` 时把 command 里的 `python` 改掉。
+- 关掉：删 `hooks/hooks.json` 的 Stop 段。需保证 `node` 在 PATH 上（脚本为 Node.js，无外部依赖）。
 
 > ⚠️ 诚实边界：**它只保证"触发确定"，执行仍靠 LLM**（判断层）。要"执行也确定、且挡住绕过 Claude 的提交"，需要**命令层硬门禁**（git hook / CI 直接跑校验，零 LLM）。提交信息这一层已补上 ↓；测试/CI 那层仍建议按项目自接。
 
@@ -302,13 +302,13 @@ cp "$CLAUDE_PLUGIN_ROOT/hooks/commit-msg" .git/hooks/commit-msg && chmod +x .git
 # 或软链，便于跟随框架更新：
 ln -sf "$CLAUDE_PLUGIN_ROOT/hooks/commit-msg" .git/hooks/commit-msg
 ```
-> 全局安装时 `$CLAUDE_PLUGIN_ROOT` 即 `~/.claude/skills/sdd`（方式 A 的安装路径）。Windows 用 git-bash 跑同样命令即可；`python` 可执行名为 `python3` 时，把 [hooks/commit-msg](hooks/commit-msg) 首行 shebang 改成 `#!/usr/bin/env python3` 之外无需改动（已是该 shebang）。
+> 全局安装时 `$CLAUDE_PLUGIN_ROOT` 即 `~/.claude/skills/sdd`（方式 A 的安装路径）。Windows 用 git-bash 跑同样命令即可。本 hook 为 Node.js（shebang `#!/usr/bin/env node`），需保证 `node` 在 PATH 上，无外部依赖、无需改动。
 
 **安全设计（fail-open）：** merge / revert / fixup! / squash! 自动放行；空消息交给 git 处理；脚本自身异常一律放行——门禁绝不无故卡住正常提交。**关闭：** 删 `.git/hooks/commit-msg`，或单次 `git commit --no-verify`。
 
 ## 多终端实时心跳 / Live Heartbeat（v0.24）
 
-多终端并发跑任务时，想一眼看清"**每个终端此刻在做哪个 feature、第几个任务、忙还是闲、还活着吗**"——靠 [hooks/status_report.py](hooks/status_report.py) 自动上报，[/sdd:status](skills/status/SKILL.md) 聚合成实时看板。**随插件自动激活、零接入**。
+多终端并发跑任务时，想一眼看清"**每个终端此刻在做哪个 feature、第几个任务、忙还是闲、还活着吗**"——靠 [hooks/status_report.js](hooks/status_report.js) 自动上报，[/sdd:status](skills/status/SKILL.md) 聚合成实时看板。**随插件自动激活、零接入**。
 
 - **自动上报（hook，零 LLM）**：`SessionStart`/`UserPromptSubmit`/`Stop` 管回合边界，`PostToolUse` 管回合中途刷新（修长回合/编排器盲区）；非 `sdd/*` 分支立刻空跑退出。
 - **长 workflow / 子代理期间靠"子代理自己续心跳"**：插件 hook **会在子代理上下文里运行**（官方文档确认，输入带子代理自己的 cwd）。所以 workflow/子代理在本 worktree 调工具时，它们的 `PostToolUse` 会拿同一个 `sdd/NNN` 分支刷新**同一个心跳文件**——心跳不停更。
