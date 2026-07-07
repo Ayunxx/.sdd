@@ -1,8 +1,8 @@
 export const meta = {
   name: 'sdd-implement',
-  description: 'SDD wave-by-wave implement: parallel implementer + bounce-back verifier per task, with Boundary/dependency gates',
+  description: 'SDD wave-by-wave implement: parallel implementer per task, with Boundary/dependency gates',
   phases: [
-    { title: 'implement', detail: 'per-wave: parallel implementer subagents then independent verifier per task' },
+    { title: 'implement', detail: 'per-wave: parallel implementer subagents' },
   ],
 }
 
@@ -65,18 +65,6 @@ const IMPL_SCHEMA = {
   required: ['status', 'changedFiles', 'summary', 'deviation', 'notes', 'gateResults'],
 }
 
-const VERIFY_SCHEMA = {
-  type: 'object',
-  additionalProperties: false,
-  properties: {
-    verdict: { type: 'string', enum: ['PASS', 'FAIL'] },
-    reasons: { type: 'string' },
-    fix: { type: 'string' },
-    gateResults: { type: 'string' },
-  },
-  required: ['verdict', 'reasons', 'fix', 'gateResults'],
-}
-
 const apiDir = cfg.apiDir || ''
 const skills = (cfg.injectSkills && cfg.injectSkills.length) ? cfg.injectSkills.join(', ') : '[暂无]'
 
@@ -90,7 +78,7 @@ function specBlock(task) {
 - 需注入调用的 skill：${skills}`
 }
 
-function implPrompt(task, fixContext) {
+function implPrompt(task) {
   return `你是 SDD implementer 子代理，实现【单个】任务 ${task.id}（${task.title}）。只回结构化摘要，不与用户对话。
 
 == 工作根（强制）==
@@ -109,45 +97,11 @@ ${task.boundary.map((b) => '  - ' + b).join('\n')}
 - 先 Grep 复用既有同包范式（参照任务块点名的既有类，如 MemberLevelReadService / RedemptionReadService / MemberLoginPublicPaths / MemberReadEndpointsIntegrationTest）再写，沿用既有命名/分层，不造轮子。
 - 按宪法与能力包 §3/§8：record 作 VO、@RequiredArgsConstructor 注入、@Slf4j 日志、APT TableDef 常量禁硬编码列名、中文克制注释、公共 VO 契约面中文 Javadoc。
 - 跑通本任务门禁：spotless:check + 编译 + 相关 test（既有套件不得报红）。把命令与结果填进 gateResults。
-${fixContext ? `\n== 重做（上一轮 verifier 判 FAIL，必须修复）==\n${fixContext}\n` : ''}
 == 回报 ==
 status: done=已完成且门禁过；blocked=必须偏离 design 才能完成（在 notes 说明原因，不要擅自偏离实现）。
 changedFiles: 相对 FEATURE_ROOT 的改动文件清单。
 deviation: 与 design 的实现偏移（无则填「无」）。
 notes: 延后/范围建议或 blocked 原因（无则填「无」）。`
-}
-
-function verifyPrompt(task, impl) {
-  return `你是 SDD verifier 子代理，独立评审【单个】已实现任务 ${task.id}（${task.title}）。只读 + 亲自跑门禁，绝不修复（实现与评审分离）。
-
-== 工作根（强制）==
-FEATURE_ROOT = ${cfg.featureRoot}
-第一步先 cd 进该目录；只在此目录内读与跑命令。${apiDir ? `maven 门禁命令在 ${apiDir}/ 子目录内执行。` : ''}
-
-== 规格 ==
-${specBlock(task)}
-Read tasks.md 精读该小节的 Done-when / 测试 / 可追溯，逐条核对。
-
-== 边界 ==
-本任务应只新增以下文件，越界即 FAIL：
-${task.boundary.map((b) => '  - ' + b).join('\n')}
-
-== implementer 自报 ==
-摘要：${impl.summary}
-改动文件：${(impl.changedFiles || []).join(', ')}
-自报门禁：${impl.gateResults}
-自报偏移：${impl.deviation}
-
-== 你要做 ==
-1) 对照 Done-when 逐条核验是否真达成（不轻信自报）。
-2) 核查未越界、未改既有类/装配/pom/迁移。
-3) 亲自跑门禁：spotless:check + 编译 + 相关 test（含新测试与既有 member 套件零报红）；把命令与真实输出填进 gateResults。
-4) 核查可维护性（命名/复杂度/复用/分层/Lombok 规约/日志不静默吞）。
-
-== 回报 ==
-verdict: PASS（全部达成且门禁绿）/ FAIL（任一不达成或门禁红或越界）。
-reasons: 判定依据（FAIL 要具体到哪条 AC / 哪个门禁）。
-fix: FAIL 时给 implementer 的修复指引（PASS 填「无」）。`
 }
 
 const results = {}
@@ -161,41 +115,20 @@ for (const wave of cfg.waves) {
   const waveResults = await parallel(
     wave.taskIds.map((tid) => async () => {
       const task = cfg.tasks[tid]
-      let fixContext = ''
-      let attempt = 0
-      let impl = null
-      let verdict = null
-
-      while (attempt <= 2) {
-        const round = attempt + 1
-        impl = await agent(implPrompt(task, fixContext), {
-          label: `impl:${tid}#${round}`,
-          phase: 'implement',
-          schema: IMPL_SCHEMA,
-          agentType: 'sdd:implementer',
-        })
-        if (!impl) {
-          return { tid, state: 'error', detail: 'implementer 子代理无返回', attempts: round }
-        }
-        if (impl.status === 'blocked') {
-          return { tid, state: 'blocked', impl, detail: impl.notes, attempts: round }
-        }
-
-        verdict = await agent(verifyPrompt(task, impl), {
-          label: `verify:${tid}#${round}`,
-          phase: 'implement',
-          schema: VERIFY_SCHEMA,
-          agentType: 'sdd:verifier',
-        })
-        if (verdict && verdict.verdict === 'PASS') {
-          return { tid, state: 'pass', impl, verdict, attempts: round }
-        }
-        fixContext = verdict
-          ? `verifier 判 FAIL。原因：${verdict.reasons}\n修复指引：${verdict.fix}`
-          : 'verifier 无返回，按 Done-when 自检后重做。'
-        attempt++
+      // implementer 自报 done 即完成（无独立验收子代理）；质量靠 implementer 报告前自跑门禁 + 合并门编译改动模块+fitness 兜底。
+      const impl = await agent(implPrompt(task), {
+        label: `impl:${tid}`,
+        phase: 'implement',
+        schema: IMPL_SCHEMA,
+        agentType: 'sdd:implementer',
+      })
+      if (!impl) {
+        return { tid, state: 'error', detail: 'implementer 子代理无返回', attempts: 1 }
       }
-      return { tid, state: 'fail', impl, verdict, detail: 'verifier 2 次重试后仍 FAIL', attempts: 3 }
+      if (impl.status === 'blocked') {
+        return { tid, state: 'blocked', impl, detail: impl.notes, attempts: 1 }
+      }
+      return { tid, state: 'pass', impl, attempts: 1 }
     })
   )
 
@@ -207,7 +140,7 @@ for (const wave of cfg.waves) {
   }
   if (!waveOk) {
     stopped = true
-    log(`Wave ${wave.id} 未全部 PASS —— 反压：停止依赖它的下游波次`)
+    log(`Wave ${wave.id} 有任务未完成（blocked/error）—— 停止依赖它的下游波次`)
   }
 }
 

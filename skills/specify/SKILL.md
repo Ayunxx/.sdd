@@ -20,7 +20,7 @@ $ARGUMENTS
    - **Normal/Large**（多文件、有不确定性、需设计）→ 走完整流程（本命令默认）。
    - 用户带了 `--lite`、或你判断属 Small → 进 lite 分支（见步骤 4b）。**修改一个已上线/已归档的功能**：不要回去重写老规格——**新建一个小规格记录这次变更（delta）**（规格是决策记录，合并后冻结）。
    - **delta 必须标源（关键，否则归档时归不回源）**：识别出本规格是 delta 时，在它的头部写 **`Delta-of: MMM-target-slug`**（被修改的目标功能 ID，到 `specs/` 或 `specs/archive/` 里找）。delta **优先走 `--lite`**。这条标记是 `/sdd:worktree finish` 把 delta **物理归档进源目录** `specs/archive/MMM-target/deltas/` 的唯一依据——漏标 = 又散落成孤立 NNN。
-   - **delta 的测试要相称、复用源功能 harness（防过度测试）**：delta 多是小改，测试**只补"这次新增/改动行为"的用例，扩展源功能已有的测试类/测试基建**，绝不为一个增量重铺一套测试类（§4 测试相称性）。在 delta 规格的验收里就写明"扩展 `源XxxTest` 加用例"，别让下游 implementer 误以为要新建一堆测试。
+   - **delta 的一次性测试要克制（防过度测试）**：delta 多是小改，只写**够验证"这次新增/改动行为"**的一次性测试、验完即删，绝不为一个增量铺一套测试类（§4）。在 delta 规格验收里写明"用几个聚焦用例验 AC、验过即删"，别让下游 implementer 误以为要新建一堆测试留库。
 
 1. **读约束**：先读 `specs/constitution.md`（若存在）。需求不得违背宪法。若不存在，提示用户最好先 `/sdd:constitution`，但仍可继续。
 
@@ -126,7 +126,7 @@ $ARGUMENTS
 - Waves: W1(并行) T1,T?；W2 T2 …
 
 ## Quality / 质量门禁
-- 遵循 constitution §3：format/lint/typecheck/test 全过（verifier 硬门禁）
+- 遵循 constitution §3：format/lint/typecheck/test 全过（implementer 报告前自跑 + 合并门硬门禁）
 ```
 > lite 完成后**直接** `/sdd:implement`（它会从 spec.md 的 `## Tasks` 段取任务），无需 clarify/plan/tasks/verify。功能若中途变复杂，再"升级"为完整三件套。
 > ⚠️ **lite 省的是规格阶段，不是合并门**：lite 一样会 merge 进 main → 一样能改坏别的功能 → **合并时照走 `/sdd:worktree finish` 的合并门**（凡入 main 必走，不按功能大小豁免）。别担心慢——合并门成本随改动范围由 build-cache 自动伸缩，lite 只动一两个模块、门只重跑那点、很便宜。唯一近乎免门的是**纯非代码改动**（docs/注释/无测试覆盖的配置），那种情况门本身就没东西可跑。
@@ -143,7 +143,7 @@ $ARGUMENTS
    - lite：提示可直接 `/sdd:implement`。
 
 ## 规格反压评审协议 / Spec Bounce-back Review（specify·plan·tasks·auto 共用）
-> 仿 `/sdd:implement` 的 verifier 反压，把"文档生成 → 自动评审 → 按需自修 → 再评审"做成默认机制，对齐不再靠人记得手动派。
+> 把"文档生成 → 自动评审 → 按需自修 → 再评审"做成默认 bounce-back 机制，对齐不再靠人记得手动派。
 1. **派评审**：用 `Task` 派对应评审 agent（requirements→`spec-reviewer`；design→`design-critic`），或对 tasks 跑覆盖自检（见 /sdd:tasks）。评审 agent 只读、回结构化 Verdict（🟢 Ready/Sound · 🟡 Minor · 🔴 Needs rework）+ blocking/should-fix 清单。
 2. **按 Verdict 处理——先把 blocking 分两类（关键）**：
    - **🟢** → 通过，报 Verdict 即可。

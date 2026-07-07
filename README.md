@@ -9,15 +9,15 @@
 | 维度 | 提供什么 |
 |------|---------|
 | **全流程驱动** | `/sdd:init` 一键初始化项目 · `/sdd:auto` 自动驾驶（人工卡点引导你选）或手动逐步：立宪→规格→设计→拆解→实现→验证→收尾 |
-| **核心引擎**（防偏移·并发·反压） | 🧊 实现期每任务**隔离子代理**（不随长会话退化）· ⚡ Boundary+Waves **波次并发** · 🔁 独立 verifier **反压打回**（≤2 次再升级） |
-| **质量 & 防全局偏移** | 代码质量门禁(format/lint/typecheck 硬强制) · 测试纪律 · **合并门全量回归** · 规格**对账后冻结** · 治"越做越偏/越冗余" |
+| **核心引擎**（防偏移·并发） | 🧊 实现期每任务**隔离子代理**（不随长会话退化）· ⚡ Boundary+Waves **波次并发** |
+| **质量 & 防全局偏移** | 代码质量门禁(format/lint/typecheck 硬强制，implementer 报告前自跑) · 测试**一次性自验(用完即丢)** · **合并门只编译改动模块 + 架构 fitness** · 功能级 `/sdd:verify` 行为验证 · 规格**对账后冻结** · 治"越做越偏/越冗余" |
 | **并发协作** | `/sdd:worktree` 多终端物理隔离 · `/sdd:sync` 跨 feature 共享 · `/sdd:status` 派生式仪表盘 + **实时心跳**（hook 自动上报各终端在做哪个 feature/第几任务/忙闲存活，多终端零冲突） |
 | **领域覆盖** | 能力包注入：全栈/移动/小程序/H5/PC/服务端/数据库/嵌入 + 任意 Claude Code skill |
 | **知识辅助** | 24 种设计模式 + 工程原则(SOLID/Clean/DDD/12-Factor/高可用) 辅助 design 选型 |
 | **可选加速** | 确定性 Workflow 编排（编排器按任务结构自选，无需 ultracode；§8 可禁用） |
 | **保持轻量** | lite 分级 / 完成即冻结归档 / 自动右尺寸——文档量随"在建功能数"走，不随项目历史膨胀 |
 
-> 最初为解决"后期繁重 / 实现后偏移 / 不支持并发"三大痛点而生（核心引擎那三条），后续逐步补齐质量、并发协作、领域覆盖与知识层。
+> 最初为解决"后期繁重 / 实现后偏移 / 不支持并发"三大痛点而生（核心引擎的隔离 + 并发两条），后续逐步补齐质量、并发协作、领域覆盖与知识层。
 
 ---
 
@@ -31,8 +31,8 @@
 1. **文档即事实来源，但必须保持真实**：规格是权威，可一旦失真就毒害所有下游（隔离子代理、verify、analyze 都信它）。所以**冻结前先对账**（reconcile）把规格校准到"实际所建"，再封存——之后不追代码，要改就开新 delta。
 2. **真相锚定，视图派生**：状态不存一份共享文件——**一功能一份**存各自目录（归属由 git worktree 唯一确定），**全局仪表盘实时派生、零落盘** → 多终端并发零冲突零串行。
 3. **确定性工具 > AI 自觉**：风格/架构一致性靠 formatter/linter/typecheck/fitness 强制（隔离子代理会放大漂移，只能靠统一工具抹平）。
-4. **局部隔离，全局设门**：任务级隔离实现 + 反压验收；功能级合并门跑**全量回归**——局部写对 ≠ 全局健康，跨功能偏移由合并门兜底。
-5. **跑了才算数**：verifier/verify 亲自跑测试、基于**实际运行证据**判定，不信口头声称。
+4. **局部隔离，全局设门**：任务级隔离实现 + implementer 报告前自跑门禁；功能级合并门**编译改动模块 + 架构 fitness**——防把 main 编译搞坏、防架构侵蚀；行为是否达成 AC 由 `/sdd:verify` 一次性验证。
+5. **跑了才算数**：合并门与 `/sdd:verify` 亲自跑测试、基于**实际运行证据**判定，不信口头声称。
 6. **克制优先**：能跳过就跳过（trivial 不上 SDD）、小事走 `--lite`、完成即冻结归档、YAGNI 不为用而堆模式/架构——文档量随"在建功能数"走，不随项目历史无限涨。
 
 ---
@@ -42,7 +42,7 @@
 ```
  /sdd:constitution → /sdd:stack → /sdd:specify → /sdd:clarify → /sdd:plan → /sdd:tasks → /sdd:implement → /sdd:verify
    立宪(一次性)        注入能力包    需求          消歧          设计        拆解         实现(编排)       行为验证
-                       全栈/移动/小程序…                                  波次并发+隔离+反压        ⇅
+                       全栈/移动/小程序…                                  波次并发+隔离           ⇅
                                                                     /sdd:analyze  静态一致性自检(随时)
 ```
 
@@ -60,7 +60,7 @@
 | `/sdd:patterns [问题]` | 设计选型参考 | 推荐/详解 | 24 种设计模式的适用场景/解决的问题/慎用，辅助 plan 选型 |
 | `/sdd:principles [问题]` | 工程原则参考 | 推荐/详解 | 设计原则(SOLID…)/架构方法(Clean/DDD…)/12-Factor/高可用，辅助 plan 选型 |
 | `/sdd:tasks` | 拆解 | `specs/NNN-slug/tasks.md` | 原子任务 + Boundary + **Waves 并行计划** |
-| `/sdd:implement [next\|T1\|wave 2\|--workflow]` | 实现（**编排器**） | 代码 + 勾选任务 | 波次并发派子代理、隔离实现+注入能力包、反压验收；编排器按任务结构自选是否用确定性 Workflow，`--workflow`=强制走 |
+| `/sdd:implement [next\|T1\|wave 2\|--workflow]` | 实现（**编排器**） | 代码 + 勾选任务 | 波次并发派子代理、隔离实现+注入能力包（implementer 报告前自跑门禁）；编排器按任务结构自选是否用确定性 Workflow，`--workflow`=强制走 |
 | `/sdd:verify` | 行为验证 | punch list | 按 AC 的 `Verify` 标签验（auto/sim 实跑；manual-HW 出人工证据清单） |
 | `/sdd:analyze` | 静态自检 | 一致性报告 | 需求↔设计↔任务↔代码 有无脱节（静态） |
 | `/sdd:status [mine]` | 项目仪表盘 | 派生只读总览 | 各 feature 归哪个终端、进度、门禁健康（多终端并发安全） |
@@ -70,13 +70,12 @@
 
 **人工卡点**：所有命令都设了 `disable-model-invocation: true`，**只能你手动触发**——AI 不会自己跳阶段。每个阶段写完即停，等你审阅再敲下一个命令。
 
-附带**四个子代理**：
-- `implementer` — 隔离上下文里实现单个任务，严守 Boundary，只回结构化摘要（上下文隔离的执行单元）
-- `verifier` — 独立验收单个任务，亲自跑测试，PASS/FAIL 裁决（反压的把关单元）
+附带**三个子代理**：
+- `implementer` — 隔离上下文里实现单个任务，严守 Boundary，报告前自跑门禁，只回结构化摘要（上下文隔离的执行单元）
 - `spec-reviewer` — 审 requirements（歧义、不可测、漏边界、范围蔓延）
 - `design-critic` — 审 design（过度/欠设计、漏失败模式、违宪、可追溯缺口）
 
-`implementer` / `verifier` 由 `/sdd:implement` 自动调度，你无需手动调用。`spec-reviewer` / `design-critic` 在 `/sdd:specify`、`/sdd:plan` 后让 Claude「用该子代理评审这份规格」。
+`implementer` 由 `/sdd:implement` 自动调度，你无需手动调用。`spec-reviewer` / `design-critic` 在 `/sdd:specify`、`/sdd:plan` 后让 Claude「用该子代理评审这份规格」。
 
 ---
 
@@ -141,14 +140,14 @@ your-project/
 
 ---
 
-## 三大机制如何落地
+## 两大机制如何落地
 
 **🧊 上下文隔离（防偏移）** — `/sdd:implement` 不再自己一路写到底，而是当**编排器**：每个任务派一个 `implementer` 子代理，在**全新干净上下文**里只读该任务相关的 spec 切片来实现。长会话上下文退化导致的"越写越跑偏"被根除——每个任务都是"第一天的状态"。
 
 **⚡ 波次并发** — `/sdd:tasks` 给每个任务标 `Boundary`（独占文件领地）和 `Depends`，并算出 `Waves`：同一波内相互独立、Boundary 不重叠的任务，编排器**在一条消息里并行派多个子代理**同时干。理论最短轮数 = Wave 数，而非任务数。
 > 并发安全靠 Boundary 不重叠保证。若两任务必须改同一文件 → 让它们落到不同 Wave（串行），或（高级）给子代理加 `isolation: "worktree"` 各自独立工作树再合并；拿不准时编排器会自动降级为串行。
 
-**🔁 反压校验** — 每个任务一完成，立即派 `verifier` 子代理**独立验收**（亲自跑测试，不轻信实现工自述）；FAIL 当场带着修复指引打回重做，最多 2 次，再不行就标 `[!]` 升级给你。缺陷在产生处就被拦截，不会累积到后面集中爆发。`/sdd:verify` 则在功能完成后做一次整体行为验证兜底。
+> **质量怎么保证（不设任务级独立验收子代理）** — 每个 `implementer` **报告 done 前必须自跑门禁**（format/lint/typecheck + 用一次性测试自验各 AC、验完即删，任一不过它就不报 done、写清 blocked 原因）；编排器只做 Boundary 守恒/依赖闸等确定性校验，不再派独立验收子代理逐任务复验。整体把关交给两道关口：**合并门**（`/sdd:worktree finish` 在主终端只编译改动模块 + 架构 fitness）拦"编译搞坏 main / 架构侵蚀"，功能级 **`/sdd:verify`** 按 AC 做一次性行为验证。缺陷靠"写的人自跑自验 + 上线前编译+fitness + 行为验收"兜，而非每步一个复验子代理。
 
 ## 多终端并发安全 / Git Worktree（v0.4）
 
@@ -181,10 +180,10 @@ your-project/
 
 > 局部门禁（每个任务/功能写对）≠ 全局健康。后期"新功能与最初对不上、代码越来越冗余"是**跨功能、随时间累积**的全局问题，要靠下面三道全局防线：
 
-**① 合并门 = 全量回归**（防"新功能改坏老功能"）
-- `/sdd:worktree finish` 合并前跑**完整测试套件**（不只本功能）+ lint + typecheck + 架构 fitness。
-- **任何老功能测试报红 = 功能偏移被当场拦在合并前**，不准合并。前提：冻结的老功能留下了测试 → 它们就是回归护栏。
-- **全量 ≠ 慢（v0.27，随规模可伸缩）**：模块一多，裸跑串行全量会让合并成关键路径瓶颈。§3「Merge gate 性能」要求合并门命令**自带"缓存跳过未变 + 并行"**（Maven `-T 1C`+`maven-build-cache-extension`、Gradle `--parallel --build-cache`、Nx/Turbo 缓存、pytest `-n auto`…）——**零安全损失**（跑的还是全部测试，只是没变的不重跑、能并行的并行）。`/sdd:constitution` 会按构建工具自动探测填入。愿牺牲一点安全换更快的可选 affected/分层，默认不启用。
+**① 合并门 = 编译改动模块 + 架构 fitness**（防"把 main 编译搞坏 / 架构侵蚀"）
+- `/sdd:worktree finish` 合并前只对**改动过的模块**跑编译（含类型检查）+ 架构 fitness，**编译通过 + fitness 全绿**才准合并。
+- **不跑测试**：本项目测试是一次性的（实现时验完即删、不留回归护栏），所以合并门不承担"跑老功能测试防改坏"的职责——行为是否达成 AC 交给 `/sdd:verify` 一次性验证。
+- **成本低**：只编译改动模块 + 静态 fitness，随改动范围自然伸缩、通常很快；编译慢可用 build-cache/并行（Maven `-T 1C`+`maven-build-cache-extension`、Gradle `--parallel --build-cache`、Nx/Turbo 缓存）加速编译本身。`/sdd:constitution` 会按构建工具自动探测填入。
 
 **② 架构适应度函数**（防架构侵蚀 + 治冗余）
 - 宪法 §3 声明、自动跑：依赖方向 / 禁止 import / 分层边界 / 复杂度上限 / **重复率阈值（jscpd）**。
@@ -192,9 +191,9 @@ your-project/
 
 **③ 源头防冗余/防"对不上"**（在写之前）
 - implementer 动手前**先 Grep 既有代码复用**、沿用既有命名与分层，绝不重复造轮子（隔离子代理最容易各写各的）。
-- verifier 把"重复造轮子 / 与既有风格脱节"列为 **FAIL** 项。
+- 架构 fitness 的**重复率阈值（jscpd）**把"重复造轮子"钉成合并门硬指标；风格脱节由 formatter/linter 统一归一化。
 
-> 链路：写前复用发现 → 任务级 verifier 防重复/守一致 → **合并门全量回归 + fitness 兜底全局**。三层一起，才压得住"项目越大越偏"。
+> 链路：写前复用发现（implementer） → 架构 fitness 重复率/分层阈值 → **合并门编译改动模块 + fitness 兜底全局**。三层一起，才压得住"项目越大越偏"。
 
 ## 保持轻量 / Keeping it Lean（v0.7）
 
@@ -236,10 +235,10 @@ your-project/
 
 ## 文档自动评审 / Auto-Review & Alignment（v0.26）
 
-> 评审能力（`spec-reviewer`/`design-critic`/`/sdd:analyze`）一直都有，但过去是"**建议你跑**"——漏跑就没把关。v0.26 把它升级成**默认自动派发 + 反压自修**：每出一份规格文档，自动派评审 agent 查对齐，仿 implement 的 verifier 反压。
+> 评审能力（`spec-reviewer`/`design-critic`/`/sdd:analyze`）一直都有，但过去是"**建议你跑**"——漏跑就没把关。v0.26 把它升级成**默认自动派发 + 反压自修**：每出一份规格文档，自动派评审 agent 查对齐，评审出 blocking 就按需自修再评（bounce-back，最多 2 轮）。
 
 - **每阶段生成即评审**：`specify`→`spec-reviewer`（requirements）、`plan`→`design-critic`（design，专查偏离 requirements/宪法、可追溯缺口、过度/欠设计）、`tasks`→design↔tasks 覆盖/越界/Boundary 自检。`--lite` 也跑一轮轻量评审。
-- **反压自修（仿 verifier bounce-back）**：评审回 Verdict（🟢/🟡/🔴）。🔴 → **只针对 blocking 项自修文档 → 再评**，最多 2 轮；2 轮仍 🔴 → 停下报用户，不无限磨。
+- **反压自修（bounce-back）**：评审回 Verdict（🟢/🟡/🔴）。🔴 → **只针对 blocking 项自修文档 → 再评**，最多 2 轮；2 轮仍 🔴 → 停下报用户，不无限磨。
 - **歧义走消歧、不自己猜（关键）**：评审的 blocking 分两类——**歧义/未定阈值/产品决策**这类 → 转 `[NEEDS CLARIFICATION]`、**先走 `/sdd:clarify` 问你**（消歧优先于自修，猜歧义=制造意图偏移）；只有**机械类**（措辞不可测但有明确写法、漏掉的明显边界 AC、可追溯缺口、违宪格式）才自修。
 - **意图红线（关键）**：自修**只动"怎么把它说清楚/说完整"**，**绝不擅自改"做什么"**——凡涉及改 Goals/范围/技术方向/未定阈值的，交用户拍板。评审是质量把关，不是替你重定义需求。
 - **全自动也不漏审**：`/sdd:auto` 各阶段在 🚦 卡点前自动评审，把 Verdict 折进卡点让你看到——以前全自动反而跳过评审的盲区补上了。
@@ -250,18 +249,18 @@ your-project/
 
 **三层防御（配置一次，全自动）：**
 1. **声明层** `constitution.md §3 Code Quality Gate`：钉死 `Format` / `Lint` / `Typecheck` / `Test` 的**真实命令** + 可维护性规则（命名、函数/复杂度上限、DRY 复用优先、分层方向、`.gitattributes` 统一换行）。
-2. **生成层** implementer + hook：每个隔离子代理**报告前自跑 format+lint**，被同一套工具归一化；可选 `hooks.example.json` 每次编辑实时跑「格式化→lint→typecheck」。
-3. **校验层** verifier + analyze：verifier 把 format/lint/typecheck 设为**硬门禁**（任一不过→FAIL 打回，不只看测试）+ 查可维护性（重复/死代码/复杂度/分层）；`/sdd:analyze` 增加 Quality Gate 与 Maintainability 审计维度。
+2. **生成层** implementer + hook：每个隔离子代理**报告 done 前自跑 format+lint+typecheck+test**（任一不过就不报 done、写清 blocked），被同一套工具归一化；可选 `hooks.example.json` 每次编辑实时跑「格式化→lint→typecheck」。
+3. **校验层** 合并门 + analyze：`/sdd:worktree finish` 的**合并门**只对**改动过的模块**跑编译（含类型检查）、编译不过禁止合并 + 架构 fitness 查可维护性（重复/复杂度/分层）；**不跑测试**（测试一次性、验完即删）；`/sdd:analyze` 增加 Quality Gate 与 Maintainability 审计维度。
 
-> 可维护性（语义层）还靠：能力包的布局约定与红线、implementer"复用优先"、verifier 的可维护性启发式。也可 `/sdd:stack skill` 注入 Claude Code 自带的 `/code-review`、`/simplify`。
+> 可维护性（语义层）还靠：能力包的布局约定与红线、implementer"复用优先"、`/sdd:analyze` 的可维护性审计维度。也可 `/sdd:stack skill` 注入 Claude Code 自带的 `/code-review`、`/simplify`。
 
 ## 确定性 Workflow 编排（编排器自选，无需 ultracode）
 
-> 直面 review 那条短板：**"编排靠软约束"**——SDD 用提示词请编排器「并行派子代理、跑 verifier、失败打回」，但没人在代码层保证它真照做（波次能不能并、verifier 重不重试、重几次，全凭 LLM 当下自觉）。**Claude Code Workflow** 把这层软编排升级成**确定性多代理编排**——波次并行调度 + verifier 重试回路**由代码强制执行**。
+> 直面 review 那条短板：**"编排靠软约束"**——SDD 用提示词请编排器「并行派子代理、守 Boundary、按依赖排波」，但没人在代码层保证它真照做（波次能不能并、Boundary 越界拦不拦、依赖 blocked 传不传播，全凭 LLM 当下自觉）。**Claude Code Workflow** 把这层软编排升级成**确定性多代理编排**——波次并行调度 + Boundary/依赖三道闸**由代码强制执行**。
 
 **升级了什么（软 → 硬）：**
 - ⚡ **波次并行**：同 Wave 内 Boundary 不重叠的任务由**编排引擎**真并发 fan-out（含建波前 Boundary 两两交集校验、运行后 files⊆Boundary 守恒断言、依赖闸 blocked 传播——三道闸全在代码里）。
-- 🔁 **verifier 重试回路**：FAIL→带 fix 重派→**重试≤2 再 `[!]`** 的阈值写死在代码里，不再"看 LLM 心情"。
+- 🔁 **越界/依赖守恒**：implementer 若写到 Boundary 外，带反馈打回重报**≤2 次**仍越界即 `[!]`；依赖未满足的任务自动 blocked 传播、不向下游扩散——阈值写死在代码里，不再"看 LLM 心情"。
 
 **怎么用（编排器自动判断，零配置）：**
 ```
@@ -347,7 +346,7 @@ ln -sf "$CLAUDE_PLUGIN_ROOT/hooks/commit-msg" .git/hooks/commit-msg
 - **为什么用插件而非散装命令**：插件是 Claude Code 官方的可复用打包机制，命令自动带 `sdd:` 命名空间，一处维护、处处可用。
 - **为什么命令自包含（模板内联）**：无论全局装还是拷进项目，都不依赖外部模板路径，不会失效。
 - **为什么禁用模型自动调用**：SDD 的价值在"人在每个阶段把关"。手动触发 = 天然卡点。
-- **轻量如何与机制兼得**：你仍只敲 `/sdd:implement` 一条命令，并发/隔离/反压全在底层自动发生——表面更省事，过程更稳，返工更少。简单任务（单文件改 bug）可跳过 SDD，直接对话即可。
+- **轻量如何与机制兼得**：你仍只敲 `/sdd:implement` 一条命令，并发/隔离全在底层自动发生——表面更省事，过程更稳，返工更少。简单任务（单文件改 bug）可跳过 SDD，直接对话即可。
 
 ## 迭代这套框架本身
 

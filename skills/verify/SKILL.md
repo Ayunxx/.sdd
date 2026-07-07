@@ -1,5 +1,5 @@
 ---
-description: 行为验证 / Verify phase — run the implemented feature against its acceptance criteria, reconcile tasks.md checkboxes, and write a feature COMPLETION report. 上线前独立行为验收：跑测试、对照 AC、兜底修正 tasks 勾选、产出功能完成度报告 COMPLETION.md。区别于 /sdd:analyze（静态文档一致性）。
+description: 行为验证 / Verify phase — run the implemented feature against its acceptance criteria, reconcile tasks.md checkboxes, and write a feature COMPLETION report. 上线前独立一次性行为验收：当场跑验证、对照 AC、兜底修正 tasks 勾选、产出功能完成度报告 COMPLETION.md（验证用的测试一次性、验完即删，不留回归护栏）。区别于 /sdd:analyze（静态文档一致性）。
 argument-hint: "[可选：功能目录名，如 001-user-auth；省略则取最新]"
 disable-model-invocation: true
 allowed-tools: Read, Write, Edit, Glob, Grep, Bash
@@ -26,7 +26,7 @@ $ARGUMENTS
    - 这一步是防"代码做了、tasks 状态漏更新"的安全网，确保完成度可信。
 
 3. **按 AC 的 `Verify:` 标签路由验证**（服务端/前端/嵌入式验法不同）：
-   - **`auto`** → 跑对应自动化测试/命令，记录通过/失败 + 阈值是否达标。
+   - **`auto`** → 跑对应自动化命令/当场写一次性测试验证，记录通过/失败 + 阈值是否达标（验完即删，不入库）。
    - **`sim`** → 在仿真环境跑（如 QEMU/Renode）；跑不了则降级为 manual-HW 并说明。
    - **`manual-HW`** → **不自动判过/判失败**：列入下方"人工证据清单"，要求人附**实测证据**（测量值/示波器截图/台架照片/签字）方可视为通过。缺证据 = 🟡 待背书，不算绿、也不冤判红。
    - 未标 `Verify:` 的 AC → 提示补标，按 auto 尝试。
@@ -63,7 +63,7 @@ $ARGUMENTS
 - **Tasks:** X / N 完成 · 阻塞: [T?...]
 - **AC:** a / b 通过 · 待人工背书(manual-HW): [AC?...] · 未达成: [AC?...]
 - **Success Criteria:** [逐条 达成/未达成 + 实测值]
-- **质量门禁:** format ✅ / lint ✅ / typecheck ✅ / test ✅（或标未过项）
+- **质量门禁:** format ✅ / lint ✅ / typecheck ✅ / 编译 ✅ · AC 一次性验证 ✅（或标未过项）
 
 ## 验收矩阵
 | AC | 方法 | 结果 | 证据/实测值 |
@@ -96,4 +96,4 @@ $ARGUMENTS
 - ❌ 本命令**不改业务代码、不修 bug**——但**会**写 `COMPLETION.md` 报告、兜底修正 `tasks.md` 勾选（这俩是跟踪文档，不是功能代码）。
 - ✅ 结论必须基于**实际运行证据**，不能凭读代码臆断"应该没问题"。
 - ✅ 区分"真没达成 AC"和"风格/锦上添花"，🔴 只放真正的验收失败。
-- ✅ **测试相称性体检（§4）**：覆盖够不够要看，**测过头也要标**——若本次改动量很小却新增了一堆测试类（尤其重容器集成测试）、或为已覆盖区域另起新类而非扩展已有 → 列入 🟡 应修"测试不相称：建议合并/降级/复用已有 harness"。覆盖不减，但别让过度测试臃肿化、拖慢合并门。
+- ✅ **一次性测试清理体检（§4）**：本项目测试是一次性的、验完即删、不留回归护栏。若发现有验证用的测试类被**留在了代码库**（应删未删）→ 列入 🟡 应修"一次性测试未清理：验证已完成，应删除、不入库"。并确认改动模块能编译通过（合并门只编译不跑测试）。

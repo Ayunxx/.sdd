@@ -33,11 +33,11 @@
 - ⚠️ 常见坑：
 
 ## 6. 验收要点 / Acceptance Focus
-> 这个领域**特别**要验什么（喂给 verifier / `/sdd:verify`）。
+> 这个领域**特别**要验什么（喂给 implementer 自验 / `/sdd:verify`）。
 - 
 
 ## 7. 本层质量门禁 / Layer Quality Gate（可选，覆盖 constitution §3 默认）
-> 全栈 monorepo 各层（包）命令不同时，在此声明**本层**的门禁命令；implementer/verifier 处理属于本层的任务时用这套，而非全局默认。未声明则回退到 §3。
+> 全栈 monorepo 各层（包）命令不同时，在此声明**本层**的门禁命令；implementer 处理属于本层的任务时用这套，而非全局默认。未声明则回退到 §3。
 - Format: [如 仅本包 `pnpm --filter web format`]
 - Lint / Typecheck: [本包的 lint/类型检查]
 - Test: [本包的测试命令]

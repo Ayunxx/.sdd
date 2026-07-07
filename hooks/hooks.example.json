@@ -1,7 +1,7 @@
 {
   "//": "可选：自动反压 + 风格一致性。每次 Edit/Write 落地就自动跑【格式化→lint→类型检查】，失败的输出回灌给 Claude 当场自纠，把风格/类型问题拦在源头、不向后累积。这是保证多隔离子代理输出风格一致的实时防线。",
   "//how-to-enable": "1) 把下面占位命令换成你项目 constitution §3 Code Quality Gate 里钉死的真实命令；2) 复制到目标项目 .claude/settings.json 的 hooks 段，或放进插件 hooks/hooks.json（注意作用域，会对该范围所有会话生效）。",
-  "//caution": "命令要快（秒级）。格式化可只跑改动文件；lint/typecheck 慢的话考虑只在 Stop 钩子或 verifier 阶段跑，避免拖慢每次编辑。",
+  "//caution": "命令要快（秒级）。格式化可只跑改动文件；lint/typecheck 慢的话考虑只在 Stop 钩子或合并门阶段跑，避免拖慢每次编辑。",
   "hooks": {
     "PostToolUse": [
       {

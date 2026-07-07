@@ -84,9 +84,9 @@ function main() {
 
   const reason =
     'SDD 门禁提醒（收工前自检，判断是否适用后再停）：检测到未提交改动。\n' +
-    '若改了代码：① 跑 constitution §3 的 Format/Lint/Typecheck + **本功能/本任务相关的测试**（能按改动范围跑就别跑全量）；' +
-    '② 对受影响的 AC 跑 /sdd:verify（功能级行为验证，非全量回归）；③ 实现若偏离了 design，回填 specs 的 ## Deviations 并 reconcile。\n' +
-    '⚠️ **不要在本（feature）终端跑全量回归/合并门**——那是 `/sdd:worktree finish` 在【主终端】的专属职责（跨功能全量 + fitness）。在这里跑全量只是把 finish 的活提前到错的地方、白白拖慢实施终端。\n' +
+    '若改了代码：① 跑 constitution §3 的 Format/Lint/Typecheck + **用一次性测试自验本任务的 AC**（验完即删、不留代码库）；' +
+    '② 对受影响的 AC 跑 /sdd:verify（功能级一次性行为验证）；③ 实现若偏离了 design，回填 specs 的 ## Deviations 并 reconcile。\n' +
+    '⚠️ **不要在本（feature）终端跑合并门**——那是 `/sdd:worktree finish` 在【主终端】的专属职责（只编译改动模块 + fitness，不跑测试）。在这里跑只是把 finish 的活提前到错的地方、白白拖慢实施终端。\n' +
     '已做过、或本次仅改文档/无需门禁 → 直接再次结束即可（本提醒每个改动状态只触发一次，不会纠缠）。';
 
   process.stdout.write(JSON.stringify({ decision: 'block', reason }));

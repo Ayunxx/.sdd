@@ -76,12 +76,12 @@ $ARGUMENTS
    - **自动对齐自检（默认开）**：按 tasks step 5b 做 design↔tasks 覆盖/越界/Boundary 反压自修。
    🚦 **拆解卡点**：报任务数 / Wave 数 **+ 覆盖自检结果** → AskUserQuestion（✅ 开始实现 / ✏️ 调整 / ⏸）。
 
-5. **IMPLEMENT** → 按 implement 编排器规则跑（波次并发、隔离子代理、verifier 反压）。
+5. **IMPLEMENT** → 按 implement 编排器规则跑（波次并发、隔离子代理，implementer 报告前自跑门禁；无任务级独立验收，质量靠合并门 + `/sdd:verify` 兜底）。
    - **（确定性并行档 · 编排器自选）** 进入实现时按 implement 的「模式选择」**自行判断**是否用 Workflow 确定性编排（多波次/高并行更划算）；选了**先一句话告知再开跑**——这是编排机制选择、非人工卡点，**不为它停**。不再要 ultracode、不再要 §8 放行（仅 constitution §8 显式"禁用"时一律提示词编排）。合规依据：用户调用 `/sdd:auto`（其指令要求你按需调 Workflow）本身即 Claude Code opt-in。
    - 正常完成的任务**自动续跑下一波，不打扰用户**。
    - **记录偏移（与 /sdd:implement 一致，别丢）**：凡 implementer 回报的 `DEVIATION` 非"无"、或实现与 design 不符——**不管是否阻塞**，都**立即追加到 `design.md`（lite 则 `spec.md`）的 `## Deviations / 实现偏移` 段**（`原 X → 实际 Y · 原因 · 影响的 AC`）。小偏移自动记下不打断；须改方向的（blocked）才停下问。
    - **记录延后（与 /sdd:implement 一致，防漏掉）**：凡决定"这块现在不做、未来补"——**立即追加一条进 `specs/BACKLOG.md` 的 `## 待补齐` 段**（`BL-NNN · 来源 · 内容 · 因 · 目标 · 记于`；文件不存在则先按 init 骨架建）。延后 ≠ 偏移：偏移记 Deviations（冻结），延后进长存台账（会被回捞）。**绝不只在对话里答应**。
-   - 仅在**异常**时 🚦 停下 AskUserQuestion：verifier 连续打回升级、implementer 报 `blocked`（须偏离 design）、要延后某范围、或要做破坏性操作 → 让用户决定（改设计 / 接受偏移(记 Deviations) / **延后补齐(记 BACKLOG)** / 跳过不做(记 Non-Goals) / 停）。
+   - 仅在**异常**时 🚦 停下 AskUserQuestion：implementer 报 `blocked`（须偏离 design）、反复越界 Boundary、要延后某范围、或要做破坏性操作 → 让用户决定（改设计 / 接受偏移(记 Deviations) / **延后补齐(记 BACKLOG)** / 跳过不做(记 Non-Goals) / 停）。
 
 6. **VERIFY** → 按 verify 规则出 punch list（按 AC 的 `Verify` 标签）。
    🚦 **验收卡点**：AskUserQuestion（✅ 通过去收尾 / 🔧 修问题回 implement / ⏸）。

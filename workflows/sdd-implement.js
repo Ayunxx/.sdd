@@ -1,7 +1,7 @@
 // SDD 实现阶段的【确定性编排】脚本（由 /sdd:implement 编排器按需调用，无需 ultracode）
 //
 // 把 /sdd:tasks 的 Waves 编译成确定性多代理流水线：波内并行派 implementer，
-// 每任务 verifier 反压、FAIL 带反馈打回重试≤2，波间硬屏障，Boundary 三道闸。
+// implementer 自报 done + Boundary 守恒闸（越界带反馈打回重试≤2），波间硬屏障，依赖闸。
 // 控制流是代码、不是提示词——这就是相对默认"提示词编排"硬化的部分。
 //
 // 用法：/sdd:implement 编排器判断要走确定性编排时（或用户传 --workflow），先把 tasks.md 解析成 args，再用 Workflow 工具跑本脚本：
@@ -17,7 +17,7 @@
 
 export const meta = {
   name: 'sdd-implement',
-  description: "Run a feature's tasks.md wave-by-wave: parallel implementer + bounce-back verifier per task, deterministic Boundary/dependency gates.",
+  description: "Run a feature's tasks.md wave-by-wave: parallel implementer per task, deterministic Boundary/dependency gates.",
 }
 
 const ImplementerSchema = {
@@ -33,16 +33,6 @@ const ImplementerSchema = {
     },
     deviation: { type: 'string' },
     notes: { type: 'string' },
-  },
-}
-
-const VerifierSchema = {
-  type: 'object', additionalProperties: false,
-  required: ['verdict', 'evidence', 'fix'],
-  properties: {
-    verdict: { type: 'string', enum: ['PASS', 'FAIL'] },
-    evidence: { type: 'string' },
-    fix: { type: 'string' },
   },
 }
 
@@ -110,18 +100,6 @@ function implPrompt(t, feedback, ctx) {
     feedback ? `\n## 上一轮被打回（必须修复后再报 done）\n${feedback}` : '',
   ].join('\n')
 }
-function verifyPrompt(t, files, ctx) {
-  return [
-    '你是 verifier 子代理，独立对抗式验收【这一个】刚实现完的任务。只读+亲自跑门禁命令，绝不改文件。按 VerifierSchema 返回（verdict PASS|FAIL + evidence + fix）。',
-    `工作根 FEATURE_ROOT（在此跑门禁/读代码，绝不碰其它目录）: ${ctx.featureRoot}`,
-    '硬规则：所有门禁/测试命令第一步先 `cd` 进上面的 FEATURE_ROOT，验的是本 feature 的 worktree、不是主目录。',
-    `功能目录(规格参考,只读): ${ctx.featureDir}`, `宪法: ${ctx.constitutionPath}`,
-    `任务 ${t.id}: ${t.what}`,
-    `Boundary: ${(t.boundary || []).join(', ')} · Done when: ${t.doneWhen || '见 Refs'} · Verify 标签: ${t.verify || 'auto'}`,
-    `implementer 改动文件: ${(files || []).join(', ') || '（无）'}`,
-    '核查：达成 Done when / 守住 Boundary / 亲跑 format+lint+typecheck+test 硬门禁 / 测试覆盖(按 Verify 标签) / 防冗余 / 合规格。任一不过→FAIL 并在 fix 给精确返工指引。manual-HW 项缺实测证据→FAIL 要求补证据。',
-  ].join('\n')
-}
 
 // ---- 主流程 ----
 const ctx = {
@@ -158,10 +136,8 @@ async function runTask(t) {
         log(`T${t.id} 越界，第${attempt}次返工`); continue
       }
 
-      const ver = await agent(verifyPrompt(t, impl.files, ctx), { schema: VerifierSchema, label: `verify:${t.id}`, phase: `Wave ${t.waveId}` })
-      if (ver.verdict === 'PASS') return { state: 'done', files: impl.files, deviation: impl.deviation, attempts: attempt + 1 }
-      if (attempt >= 2) return { state: 'blocked', reason: ver.fix, evidence: ver.evidence, files: impl.files, attempts: attempt + 1 }
-      attempt++; feedback = ver.fix; log(`T${t.id} FAIL，第${attempt}次返工`)
+      // implementer 自报 done 且守住 Boundary → 完成（无独立验收子代理；质量靠 implementer 报告前自跑门禁 + 合并门编译改动模块+fitness 兜底）
+      return { state: 'done', files: impl.files, deviation: impl.deviation, attempts: attempt + 1 }
     }
   } catch (e) {
     // 评审 blocking②：单任务异常不冒泡毁全 run，转成 blocked
@@ -205,5 +181,5 @@ return {
     blocked: w.taskIds.filter(id => results[id] && results[id].state === 'blocked'),
   })),
   deviations: all.filter(i => i.deviation && i.deviation.trim() && i.deviation.trim() !== '无').map(i => ({ id: i.id, deviation: i.deviation })),
-  needsHumanDecision: all.filter(i => i.state === 'blocked').map(i => ({ id: i.id, reason: i.reason || 'blocked', evidence: i.evidence, action: '需人工裁决：修 design / 拆 Boundary / 解依赖后重跑' })),
+  needsHumanDecision: all.filter(i => i.state === 'blocked').map(i => ({ id: i.id, reason: i.reason || 'blocked', action: '需人工裁决：修 design / 拆 Boundary / 解依赖后重跑' })),
 }

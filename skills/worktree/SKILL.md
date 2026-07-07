@@ -56,9 +56,9 @@ $ARGUMENTS
 3. **规格对账（reconcile，冻结前必做，治"文档停更")**：合并即冻结——所以**先让规格= 实际所建**。
    - 核对 `requirements.md`/`design.md` 与实际实现（可借 `/sdd:analyze` 查 staleness）；把实现期的业务/技术偏移**回填进规格**：修正受影响的 AC、更新 design，确认 `## Deviations / 实现偏移` 段已覆盖。
    - 有未回填的偏移 → **先回填再继续**。对账完成的规格才允许进入合并→冻结。
-4. **合并门（防全局功能偏移，关键）**：在 feature 分支上跑 constitution §3 的 **Merge gate——全量测试套件 + lint + typecheck + 架构 fitness（依赖方向/分层/重复率/复杂度）**，**不只是本功能的测试**。**lite / full 一视同仁**——凡经 finish 进 main 都走门（lite 只动一两个模块、cache 让它很便宜；纯非代码改动门近乎瞬时）。不按功能大小豁免。
-   - **用 §3「Merge gate 性能」里钉的"缓存+并行"命令跑，别裸跑串行全量**——模块多时裸跑会让合并成关键路径瓶颈。缓存只跳过"未变模块"（零安全损失，跑的还是全部）。没填性能命令的项目，提示去 §3 补（Maven `-T 1C`+build-cache、Gradle `--parallel --build-cache` 等）。
-   - 有**任何老功能的测试报红** → **停下**，这说明新功能改坏了已有功能（典型的"后期功能偏移"），原样报告失败项，等修复，**不准合并**。
+4. **合并门（防编译搞坏 main / 架构侵蚀，关键）**：在 feature 分支上跑 constitution §3 的 **Merge gate——只对改动过的模块跑编译（含类型检查）+ 架构 fitness（依赖方向/分层/重复率/复杂度）**，**编译通过 + fitness 全绿即放行**。**不跑测试**（测试是一次性的、实现时已验完即删）、不跑全量、不碰未改模块。**lite / full 一视同仁**——凡经 finish 进 main 都走门（编译改动模块本身就轻；纯非代码改动门近乎瞬时）。不按功能大小豁免。
+   - **只编译改动过的模块**（如 Maven `-pl <changed> -am compile` / Gradle `:<mod>:compileJava` / `tsc --noEmit`），别去编译或测试整库；编译慢可用 §3 里的 build-cache/并行加速编译本身。
+   - **编译不过**（改动模块或其依赖编译报错）→ **停下**，原样报告失败项，等修复，**不准合并**。
    - fitness 不过（如重复率超阈值、分层违规）→ 同样停下，先治理。
 5. 切到 base（在主 worktree 上）：`git switch <base>`。
 6. 默认合并：`git merge --no-ff sdd/<slug>`。
