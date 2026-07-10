@@ -8,22 +8,23 @@
 
 本项目采用 SDD（规格驱动开发）。**文档即事实来源**，代码是规格的产物。
 
-- 权威规格在 `specs/`：`constitution.md`（全局宪法）+ 每个功能的 `NNN-slug/{requirements,design,tasks}.md`。
-- 动手实现前，相关功能必须已有经我确认的 requirements → design → tasks。缺失就提示我先走对应阶段，不要凭对话直接写功能代码。
+- 权威规格在 `specs/`：`constitution.md`（全局宪法）+ 每个功能二选一的事实源：full=`NNN-slug/{requirements,design,tasks}.md`，lite=`NNN-slug/spec.md`。不得要求 lite 同时存在 full 三件套。
+- 动手实现前，full 必须已有经我确认的 requirements → design → tasks；lite 必须已有经我确认且含 What/How/Tasks/Quality 的 spec.md。缺失才提示走对应阶段，不要凭对话直接写功能代码。
 - 任何代码改动都要能追溯到某条 requirement / 某个 task。想到规格外的改进，记下来告诉我，由我决定是否新开任务，不要擅自扩张范围。
 - 一切实现必须遵守 `specs/constitution.md`；需偏离时先停下说明、等我批准。
 - **文档自动评审（对齐把关）**：每出一份规格文档即**默认自动派评审**——`/sdd:specify`→`spec-reviewer`、`/sdd:plan`→`design-critic`、`/sdd:tasks`→design↔tasks 覆盖自检；评审 🔴 分两类：**歧义/需定夺的先转 `[NEEDS CLARIFICATION]` 走 `/sdd:clarify` 问我消歧（消歧优先、不许自己猜）**，只有机械类（措辞不可测、漏明显边界 AC、可追溯缺口、违宪格式）才**自修再评（最多 2 轮 bounce-back）**。**意图红线**：自修只动"说清楚/说完整"，绝不擅自改"做什么"（改 Goals/范围/技术方向/未定阈值的交我拍板）。`/sdd:auto` 各阶段卡点会带上评审 Verdict。
-- 实现阶段（`/sdd:implement`）以**编排器**方式运行：每个任务派隔离子代理实现（防偏移）、按 Boundary 不重叠的 Waves 并发。implementer 报告 done 前自跑门禁（format/lint/typecheck + 一次性测试自验、验完即删），质量由合并门（只编译改动模块 + 架构 fitness）+ 功能级 `/sdd:verify` 兜底，不设任务级独立验收子代理。我无需手动调度子代理。
-- **确定性 Workflow 编排**：`/sdd:implement` 的编排器**按任务结构自行决定**是否用 Workflow 跑本 feature（多波次/高并行更划算，波次并行+重试由代码保证；更费 token，走之前会一句话告知）。**无需 ultracode**；除非项目 constitution §8 显式"禁用 Workflow"。传 `--workflow` 可强制走确定性编排。
-- **多终端并发安全（两种安全姿势，二选一）**：① **经典隔离**——每个 feature 开独立终端、cd 进各自 `/sdd:worktree start` 出的 worktree 目录，全程就地干。② **主目录 hub**——多个终端都在主目录驱动需求/文档（不同 feature 写不同 `specs/NNN/`，互不撞），**编码阶段 `/sdd:implement` 按当前分支自动判定 `FEATURE_ROOT`，把代码/门禁/提交全引流进该 feature 的 worktree，主工作树编码期只读**——这就是多终端并发不打架的根。**唯一禁忌**：在主目录里手动 `git commit/checkout/reset/切分支`，或并发跑 `/sdd:worktree finish` 合并——这些动主目录 HEAD/index 的操作必须串行、先确认（否则仍会互相 reset）。
-- **防撞功能编号**：feature 的 NNN 编号要在 `/sdd:worktree start` 统一分配，且分配时扫**所有 `sdd/*` 分支**（共享 .git 能看见别终端在建的号）取 max+1；已在 worktree 里就**复用分支上的号、别重新分配**。绝不只扫本地 `specs/` 取号（多终端必撞）。
+- 实现阶段（`/sdd:implement`）以**编排器**方式运行：每个任务派隔离 implementer、按 Boundary 不重叠的 Waves 并发。implementer `done` 只是待评审：high risk、deviation、共享边界任务必须经独立 `code-reviewer` 基于真实 Git diff/evidence 审查，其余每 Wave 至少抽样 1 个有 diff 的任务；只有 `PASS` 可标 `[x]`，修复后最多重审 2 轮，仍不过则 blocked。之后再由合并门 + 功能级 `/sdd:verify` 兜底。
+- **可选 Workflow 编排**：`/sdd:implement` 默认走提示词编排；只有本次显式传 `--workflow` 才启动动态 Workflow。启动前校验 tool allowlist 与 Git 可审计范围；任何 agent `null`/异常立即终止并返回 `runtimeFailures`，不得盲重试或空转。Workflow 只确定性控制调度/依赖，Git auditor 不是文件系统沙箱。
+- **Feature 单一事实源（硬不变量）**：一个 feature = 一个 `sdd/NNN-slug` 分支 = 一个独立 worktree = 同一套规格、代码、任务状态文件（full=`tasks.md`；lite=`spec.md`）和 `COMPLETION.md` 验证证据。除 trivial 直改外，先从主 worktree 执行 `/sdd:worktree start <slug>`，再进入新目录；full 跑 specify→plan→tasks→implement→verify，lite 跑 specify→按需 clarify→implement→verify。**第一行规格就写在 Feature Worktree，不得把规格留主干、代码写旁路 worktree**。
+- **防撞功能编号与分支复用**：NNN 由 `/sdd:worktree start`/`auto` 扫 `specs/`、archive/deltas、所有 `sdd/*` 分支和 worktree 后统一分配。已有 worktree 就复用；旧版只有分支没有 worktree 时，用 `git worktree add <path> sdd/NNN-slug` 附着，**不得再用 `-b` 重建同名分支**；已在 Feature Worktree 内就复用分支身份，不重新分配编号。
+- **旧版 split-brain 迁移**：若规格只在主 worktree、代码在 Feature Worktree，`implement`/`verify` 必须停下；将完整 `specs/NNN-slug/` 转移到 feature 分支，核对 requirements/design/tasks/COMPLETION 与实现、提交后再继续。不得按时间戳猜新旧、不得静默覆盖或让两份长期共存。
 - **跨 feature 共享信息**：只能共享**已提交**的内容（先 commit 再 `/sdd:sync`），共享契约以规格层为权威；可预见的公共部分先抽成 foundation feature 落 main。
 - **Bash 执行纪律（降低命令报错/误判）**：① 找代码/路径/定义这类侦察优先用 Grep/Glob/Read 工具，不用 bash 的 `rg`/`find`/`cat`（无退出码噪音、跨平台稳）。② 一次 Bash 只干一件相关事；多个独立探测**拆成多次调用**，别用 `;` 串成一坨——一条踩雷会让整串标红且看不出是哪条。③ 不要 `2>/dev/null` 灭掉 stderr，出错时它是唯一线索。④ `rg`/`grep` 的退出码 `1`=无匹配、`2`=出错，**都不等于"我的命令失败"**；纯探测用 `|| true` 兜平、只看 stdout。⑤ 跨目录用 `git -C <dir>` 而非 `cd <dir> &&`；跑命令前自检不得残留 `<…>` 尖括号占位符（bash 会当重定向，直接语法错）。
-- **代码质量门禁**：风格一致性靠工具不靠自觉。实现任一任务后必须跑通 constitution §3 的 format/lint/typecheck/test，任一不过不算完成；遵守 §3 可维护性规则（命名、复杂度上限、复用优先、分层方向）。
-- **测试相称性（§4，防过度测试）**：覆盖每条 AC，但"怎么覆盖"要相称、复用优先——"每 AC 有测试覆盖" ≠ "每 AC 一个新测试类"。改已覆盖区域就**往已有测试类加方法**、能单测别上集成测试、相关多 AC 共用一类；小改 = 少量聚焦测试，绝不为 10 行改动堆七八个测试类（既臃肿又拖慢合并门）。delta 复用源功能 harness。
-- **防全局功能偏移（大项目后期）**：① 写前先 Grep 复用既有代码、沿用既有命名与分层，绝不重复造轮子；② 合并到主干前必须过**合并门**——只对改动过的模块跑编译（含类型检查）+ 架构 fitness（依赖方向/分层/重复率），编译不过或 fitness 违规即禁止合并（**不跑测试**：测试是一次性的、实现时验完即删，不留作回归护栏）。
+- **代码质量门禁**：风格一致性靠工具不靠自觉。实现任一任务后必须跑通 constitution §3 的适用 format/lint/typecheck/test；回报要带实际命令、退出码、摘要和日志位置，任一非零或证据缺失都不算完成。遵守 §3 可维护性规则（命名、复杂度上限、复用优先、分层方向）。
+- **风险分层测试（§4）**：覆盖每条 AC，但"怎么覆盖"要相称、复用优先。历史 Bug、公共契约、鉴权安全、状态机/领域不变量、迁移、并发事务、共享核心能力必须留持久回归测试；探索、一次性诊断、硬件/外部探针才可 ephemeral。"每 AC 有覆盖" ≠ "每 AC 一个新测试类"：优先扩展既有 harness，小改只加少量聚焦用例，绝不删除高价值回归。
+- **防全局功能偏移（大项目后期）**：① 写前先 Grep 复用既有代码、沿用既有命名与分层，绝不重复造轮子；② 合并到主干前必须过**合并门**——对改动模块跑编译（含类型检查）+ 架构 fitness（依赖方向/分层/重复率）+ **受影响的持久测试**，任一失败或证据不完整即禁止合并；共享核心/影响范围无法可靠收窄时扩大到对应完整套件。
 - **保持轻量（防文档膨胀）**：① 分级——琐碎改动直接做不建规格；小功能用 `/sdd:specify --lite`（单文件）；只有较复杂的才走完整流程。**注意：分级省的是规格阶段、不是合并门——lite 一样 merge 进 main、一样能改坏别人，故 lite 照走 `/sdd:worktree finish` 合并门（凡入 main 必走、不按大小豁免；成本随改动范围由 cache 伸缩，lite 很便宜）。Trivial 直接改不经 finish 故无门，但碰共享/跨模块代码要升级到 lite 走门。**② 对账后冻结——合并前先 reconcile：把实现期偏移回填进规格、使"规格= 实际所建"（实现中偏离 design 要记入 `## Deviations`），**对账后才冻结**，之后不再同步代码（代码才是运行时真相）；要改已上线功能就**新开一份小规格(delta)**、头部标 `Delta-of: MMM-target`，不重写老文档。③ 归档——完成的 feature 移到 `specs/archive/NNN/`；**delta 归进源** `specs/archive/MMM-target/deltas/NNN/`（并在源 COMPLETION.md 记一行变更日志），让源功能历代变更集中可查、不散成孤立 NNN。
-- **延后不丢（防功能漏掉）**：实现/推进中决定"现在不做、未来补"的范围 = **延后**（区别于"做成了别的样子"的偏移）。延后**必须落项目级 `specs/BACKLOG.md`**（不只记 Deviations——那会随归档沉底），绝不只在对话里答应。`/sdd:status` 常驻显示待补齐、`/sdd:specify` 起新功能时回捞、`/sdd:verify`/`finish` 收尾时勾掉或再提醒——全链路保证延后项不被漏。
+- **延后不丢（防功能漏掉）**：实现/推进中决定"现在不做、未来补"的范围 = **延后**（区别于"做成了别的样子"的偏移）。延后**必须一项一文件落到项目级 `specs/backlog/BL-*.md`**（`specs/BACKLOG.md` 仅索引/兼容旧条目），绝不只在对话里答应。`/sdd:status` 常驻聚合、`/sdd:specify` 回捞、`/sdd:verify`/`finish` 收尾更新状态。
 - 项目首次用 SDD：先 `/sdd:init`（一次性建结构+生成宪法+激活能力包+接纪律）。
 - **SDD 产物归 SDD**：规格/设计/任务一律按 SDD 模板生成，**不要转交其他插件/框架的 skill（如 Superpowers）来写**——它们模板与门禁不同，会破坏 SDD 结构与可追溯。
-- 两种用法：**自动驾驶** `/sdd:auto <想法>`（一条命令跑全流程，只在人工卡点停下让我选）；或**手动逐步** `/sdd:specify` → `/sdd:clarify` → `/sdd:plan` → `/sdd:tasks` → `/sdd:implement` → `/sdd:verify`。并发用 `/sdd:worktree`、`/sdd:sync`，随时 `/sdd:analyze`、`/sdd:status`。
+- 两种用法都先建立 Feature Worktree：**自动驾驶**从主 worktree 运行 `/sdd:auto <想法>` 创建/定位 worktree，进入新目录续跑；或手动 `/sdd:worktree start <slug>`，进入新目录后依次 `/sdd:specify` → `/sdd:clarify` → `/sdd:plan` → `/sdd:tasks` → `/sdd:implement` → `/sdd:verify`。完成后回主 worktree 串行 `finish`；随时可在主 worktree `/sdd:status`。

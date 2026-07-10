@@ -29,20 +29,13 @@ $ARGUMENTS
    - **不是** → 说明 worktree/合并门/sync 都依赖 git，确认后 `git init`。
    > 备注：即便误跑，`git init` 对已有仓库也是**安全幂等**的（只 "Reinitialized"，不动任何提交/分支/工作区/历史）——但本命令仍按上面判断，不做多余操作。
 
-3. **建结构**：创建 `specs/`、`specs/stacks/`、`specs/archive/`（缺则建）；并建项目级延后台账 `specs/BACKLOG.md`（缺则建，已存在不动），骨架如下——这是"现在不做、未来补"的唯一长存落点，**绝不放进任何 feature 目录**（会随归档沉底）：
+3. **建结构**：创建 `specs/`、`specs/stacks/`、`specs/archive/`、`specs/backlog/`（缺则建）；并建只读说明/兼容入口 `specs/BACKLOG.md`（缺则建，已存在不动）。**新延后项的唯一事实源是一项一文件的 `specs/backlog/BL-<featureNNN>-<seq>.md`**，绝不追加到共享 BACKLOG.md，也不放进 feature 目录。这样不同 feature 合并时添加不同文件，不在同一 Markdown 尾部制造热点冲突。
    ```markdown
-   # Backlog / 待补齐台账
-   > 项目级延后清单：实现/推进中决定"现在不做、未来补"的范围，落这里防遗漏。跨 feature/epic 长存。
-   > 与 design §11 ## Deviations 的区别：Deviations = "做成了别的样子"（对账用、合并即冻结）；本台账 = "没做、要以后做"（待办，会被各阶段主动回捞）。
-   > 状态：[ ] 待补齐 · [~] 已排期(写明纳入哪个 feature) · [x] 已补齐(写明由哪个 feature 完成 + 日期)。ID 用 BL-NNN 递增。
-
-   ## 待补齐 / Open
-   <!-- - [ ] BL-001 · 来源:002-payment/T7(AC5) · 内容:多渠道退款路由 · 因:本期仅接微信 · 目标:接 alipay 时 · 记于:2026-06-13(用户确认延后) -->
-
-   ## 已排期 / Scheduled
-
-   ## 已补齐 / Done
+   # Backlog / 待补齐索引
+   > Canonical entries live in `specs/backlog/BL-*.md`; `/sdd:status` derives the Open/Scheduled/Done view.
+   > Do not append new entries here. Existing legacy list entries remain readable until deliberately migrated.
    ```
+   每个 canonical item 固定字段：`# BL-002-001`、`Status: open|scheduled|done`、`Source`、`AC`、`Content`、`Reason`、`Target`、`Recorded`，以及状态变化时的 `Scheduled-in`/`Completed-by`。占号前先把 NFC 规范化后的 `Source/AC/Content/Reason/Target` 按固定键序列化为 canonical JSON，计算 SHA-256 `decisionDigest`（`Recorded` 是落盘时间，不参与稳定身份）。永久 `refs/sdd/backlog-ids/BL-002-001` 做 expected-absent CAS，指向包含 `protocol/id/source/decisionDigest` 的 `sdd-backlog-id-v1` owner blob；读取时用 `git cat-file blob` 校验。CAS 失败时，只有 blob digest 与请求一致且现有 item 内容重算 digest 也一致才算同一决策中断恢复；同一 task/AC 的另一段 Content/Reason 仍是不同 owner，必须取下一 seq，绝不复用/覆盖赢家。ref 永不删除。
 
 4. **生成宪法（自动扫描）**：执行 `/sdd:constitution` 的扫描逻辑（**任意语言**）——探测技术栈、把门禁填成项目已有的真实命令（package.json scripts / Makefile / CI 配置 / 惯用工具…）、从目录结构推断架构 → 写 `specs/constitution.md` 草稿。**展示探测到了什么，让用户核对**；探测不到的标 `[待定]`。
 
@@ -53,7 +46,13 @@ $ARGUMENTS
 
 7. **换行一致性**：若项目无 `.gitattributes` 且宪法 §3 提到统一换行 → 建议加一份（`* text=auto eol=lf` 之类）。
 
-8. **（可选 `--vendor`）项目自带命令**：把框架 `skills/` + `agents/` 拷进项目 `.claude/`，让**没装全局插件的同事**也能用（此模式命令名不带 `sdd:` 前缀）。代价：随仓库走、更新需手动同步。默认**不做**（推荐大家各自装全局插件）。
+8. **（可选 `--vendor`）项目自带命令与运行时**：以当前 Git 仓库根为 `PROJECT_ROOT`，再定位插件根（优先 `${CLAUDE_PLUGIN_ROOT}`；找不到或源文件不完整就停止）。经用户确认后按下面的**固定映射**复制；创建目标目录但不改变层级、文件名或扩展名：
+   - `skills/*` → `PROJECT_ROOT/.claude/skills/*`
+   - `agents/*` → `PROJECT_ROOT/.claude/agents/*`
+   - `workflows/*` → `PROJECT_ROOT/.claude/sdd/workflows/*`
+   - `stacks/*` → `PROJECT_ROOT/.claude/sdd/stacks/*`
+
+   `workflows/` 必须整体复制，至少包含 `sdd-implement.js`、`sdd-implement-core.js` 与 `git-audit.cjs`；不得只复制入口脚本。它是一个原子版本集：任一目标不同就展示整组差异，只允许“整组覆盖”或“整组跳过”（默认跳过），禁止把新旧版本混成不一致的运行时。复制后逐项确认目标存在且与来源内容一致，再报告 vendored 模式可用；此模式命令名不带 `sdd:` 前缀。代价：文件随仓库走，插件升级后需重新执行 `--vendor` 并人工确认同步。默认**不做**（推荐大家各自安装插件）。
 
 9. **收尾**：`git add` 新增的 `specs/` 与 `CLAUDE.md`（**不自动 commit**，让用户掌控）；汇报做了什么 + 下一步：`/sdd:auto <想法>`（自动驾驶）或 `/sdd:specify`（手动逐步）；多 feature 并行时用 `/sdd:status` 看全局、`/sdd:worktree` 隔离。
 

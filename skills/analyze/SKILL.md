@@ -7,14 +7,14 @@ allowed-tools: Read, Glob, Grep, Bash(ls *), Bash(cat *), Bash(git *)
 
 # /sdd:analyze — 一致性自检
 
-你的任务：把某个功能的 `requirements.md` ↔ `design.md` ↔ `tasks.md` ↔ 实际代码四层对齐做交叉核对，**只读**，产出一份发现清单。任何阶段卡住或上线前都可跑。
+你的任务：把某个功能的规格与实际代码做交叉核对，**只读**，产出一份发现清单。full 模式核对 `requirements.md` ↔ `design.md` ↔ `tasks.md` ↔ 代码/测试/Implementation Evidence；lite 模式核对单一 `spec.md` 中 `What & Done` ↔ `How` ↔ `Tasks` ↔ 代码/测试/Implementation Evidence。任何阶段卡住或上线前都可跑。
 
 ## 用户输入
 $ARGUMENTS
 
 ## 执行步骤
 
-1. **读全套**：目标功能的 `requirements.md`、`design.md`、`tasks.md`、`specs/constitution.md`，并用 Glob/Grep 检视设计/任务中提到的实际代码文件。定位方式同 /sdd:clarify。
+1. **读模式对应的事实源**：先识别 mode；full 读取目标功能的 `requirements.md`、`design.md`、`tasks.md`，lite 只读取 `spec.md`，两者都读取 `specs/constitution.md`，并用 Glob/Grep 检视设计/How/任务中提到的实际代码文件。不得因 lite 缺少三个 full 文件而报缺件，也不得凭空创建它们。定位方式同 /sdd:clarify。
 
 2. **逐层比对**，至少检查以下脱节类型：
 

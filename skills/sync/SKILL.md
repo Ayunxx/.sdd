@@ -20,16 +20,16 @@ $ARGUMENTS
    - 空 或 `main` → 来源 = 默认分支（探测 `main`/`master`）。最常见：把主干最新变更跟进当前 feature。
    - `from <feature-slug>` → 来源 = `sdd/<feature-slug>` 分支（直接拿另一个在建 feature 的**已提交**成果）。
    - 直接给分支名 → 用该分支。
-   - 校验来源分支存在（`git rev-parse --verify`）；不存在则列出可选分支。
+   - `from <feature-slug>` 的 slug 必须匹配 `^(?:[0-9]{3}-)?[a-z0-9]+(?:-[a-z0-9]+)*$`；直接分支名必须先通过 `git check-ref-format --branch`。随后用结构化 argv 调 `git rev-parse --verify --end-of-options <ref>^{commit}` 校验唯一存在；失败则列出可选分支。不得把用户输入拼进 shell 命令。
 
 3. **安全闸（关键）**：`git status --porcelain` 检查当前 worktree 是否干净。
    - **脏**（有未提交改动）→ **停下**，提示先 commit 或 stash，**不替用户冒险合并**。
 
 4. **选策略**：
-   - 默认 **merge**：`git merge --no-ff <source>` —— 保留历史，适合来源是别人也在用的共享分支。
+   - 默认 **merge**：`git merge --no-ff --no-edit <source>` —— 保留历史且不拉起编辑器，适合来源是别人也在用的共享分支。
    - `--rebase`：`git rebase <source>` —— 线性历史，适合"把 main 跟进到**尚未共享/未推送**的本 feature 分支"。⚠️ 已推送/已被别人引用的分支不要 rebase。
 
-5. **冲突处理**：一旦冲突 → **立即停**，列出冲突文件，给出处理指引（手动解决 → `git add <file>` → `git merge --continue` 或 `git rebase --continue`；或 `--abort` 回滚）。**绝不自动猜测解决**。
+5. **冲突处理**：一旦冲突 → **立即停**，列出冲突文件，给出处理指引（手动解决 → `git add <file>` → `git -c core.editor=true merge --continue` 或 `git rebase --continue`；或 `--abort` 回滚）。merge continue 复用既有 `MERGE_MSG` 且不得拉起编辑器；**绝不自动猜测解决**。
 
 6. **报告**：成功后给出本次并入了哪些提交与改动概览（`git log --oneline <before>..HEAD`、`git diff --stat`），并提醒：若共享的是接口/数据模型，确认与规格层（design.md/契约）一致。
 

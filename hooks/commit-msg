@@ -31,10 +31,6 @@
  * 安装：本文件需放到项目 `.git/hooks/commit-msg` 且可执行（见 README「提交规范」一节）。需要 node 在 PATH 上。
  * 关闭：删除 `.git/hooks/commit-msg`，或 `git commit --no-verify`（单次跳过）。
  */
-'use strict';
-
-const fs = require('fs');
-
 const TYPES = ['feat', 'fix', 'docs', 'style', 'refactor',
   'perf', 'test', 'build', 'ci', 'chore', 'revert'];
 
@@ -70,7 +66,7 @@ function reject(firstLine) {
   process.exit(1);
 }
 
-function main() {
+function main(fs) {
   // git 把 commit message 文件路径作为第一个参数传入
   const msgPath = process.argv[2];
   if (!msgPath) allow();
@@ -106,9 +102,9 @@ function main() {
   allow();
 }
 
-try {
-  main();
-} catch (e) {
-  // 任何意外一律放行：门禁脚本本身绝不能困住提交
-  allow();
-}
+// Dynamic import works whether this extensionless Git hook is executed from a
+// CommonJS or ESM package scope. A copied hook therefore does not depend on a
+// neighboring package.json, while an import/runtime failure still fails open.
+import('node:fs')
+  .then(fs => main(fs))
+  .catch(() => allow());

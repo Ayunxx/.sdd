@@ -1,9 +1,12 @@
 {
   "name": "sdd",
   "displayName": "Spec-Driven Development",
-  "version": "0.28.0",
-  "description": "规格驱动开发工作流 / Spec-Driven Development for Claude Code: constitution → stack → specify → clarify → plan → tasks → implement → verify，配 worktree 多终端并发隔离 + sync 跨 feature 共享。两大机制（上下文隔离防偏移·波次并发）+ 代码质量门禁（implementer 报告前自跑门禁 + 一次性测试自验用完即丢 + 合并门只编译改动模块+fitness + /sdd:verify 行为验证） + Stop hook 收工自检 + commit-msg 硬门禁（Conventional Commits，命令层零 LLM）+ delta 归档到源 + plan 设计模式选型 + 多终端实时心跳看板（hook 自动上报，/sdd:status 聚合）+ 延后不丢台账（specs/BACKLOG.md 全链路回捞）+ 文档自动评审反压（每出一份规格即派评审 agent 查对齐、按需自修）+ 可注入领域能力包（全栈/移动/小程序/H5/PC/服务端/数据库）+ 确定性 Workflow 编排（编排器按任务结构自选，无需 ultracode；§8 可禁用）。文档即事实来源，阶段间设人工卡点。",
-  "keywords": ["spec-driven-development", "sdd", "workflow", "planning", "spec", "parallel", "subagents", "fullstack", "skills", "git-worktree", "hooks", "ultracode"],
+  "version": "0.29.0",
+  "author": {
+    "name": "Ayunxx"
+  },
+  "description": "规格驱动开发工作流 / Spec-Driven Development for Claude Code: constitution → stack → specify → clarify → plan → tasks → implement → verify。以一 feature 一 worktree 保持规格、代码与证据同源；任务级上下文隔离 + Boundary/Waves 并发；实现门禁记录可核验证据，关键回归测试持久化，合并门执行改动模块编译、架构 fitness 与受影响测试；另含 Stop hook、Conventional Commits、delta 归档、实时状态、延后台账、文档自动评审、领域能力包和可选动态 Workflow 编排。",
+  "keywords": ["spec-driven-development", "sdd", "workflow", "planning", "spec", "parallel", "subagents", "code-review", "quality-gates", "regression-testing", "git-worktree", "hooks"],
   "hooks": "./hooks/hooks.json",
   "license": "MIT"
 }

@@ -12,8 +12,8 @@ allowed-tools: Read, Bash(cat *), Bash(ls *)
 
 1. **定位并读取插件清单 `plugin.json`**（取 `name`/`displayName`/`version`/`description`）。按优先级找：
    1. `${CLAUDE_PLUGIN_ROOT}/.claude-plugin/plugin.json`（插件运行时根，最准）；
-   2. 插件安装目录（全局安装在 `~/.claude/skills/sdd/.claude-plugin/plugin.json`）；
-   3. 当前项目里的 `.sdd/.claude-plugin/plugin.json`（在框架源码目录里跑时）。
+   2. 当前仓库的 `.claude-plugin/plugin.json`（用 `--plugin-dir` 开发时）；
+   3. Claude Code marketplace 缓存中当前启用的 `sdd` 插件目录（只在前两项不可用时查，不能凭目录名猜版本）。
    - 三处都读不到 → 如实说"未找到 plugin.json，无法确定版本"，并提示检查插件是否正确安装，**不要瞎猜版本号**。
 
 2. **（可选）读 README 取本版要点**：若同目录能找到 `README.md`，扫它的能力段标记（形如 `（vX.Y…）` 的小标题）作为"本版包含的能力"摘要。读不到就跳过，不报错。
@@ -30,7 +30,7 @@ SDD <version> — <displayName>
 - （其它 vX.Y 标记…）
 ```
 
-4. **收尾提示**（一行）：版本号定义在 `.claude-plugin/plugin.json`；更新框架后若改了 agents/hooks，需 `/reload-plugins` 或重启才生效（skills 正文软链安装即时生效）。
+4. **收尾提示**（一行）：版本号定义在 `.claude-plugin/plugin.json`；更新或修改 skills/agents/hooks 后需 `/reload-plugins` 或重启才生效。
 
 ## 纪律
 - ✅ 只读：绝不修改 `plugin.json` 或任何文件（改版本号是发布动作，不在本命令职责内）。

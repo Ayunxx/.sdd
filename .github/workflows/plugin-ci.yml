@@ -1,0 +1,106 @@
+name: Plugin CI
+
+on:
+  push:
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: plugin-ci-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  static:
+    name: Static checks and tests
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v4
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+
+      - name: Install project dependencies
+        shell: bash
+        run: |
+          if [[ -f package-lock.json ]]; then
+            npm ci
+          elif [[ -f package.json ]]; then
+            npm install --ignore-scripts
+          else
+            echo "No package.json; dependency installation is not required."
+          fi
+
+      - name: Check JavaScript syntax
+        shell: bash
+        run: |
+          # Dynamic Workflow scripts intentionally use a runtime-level top-level
+          # return, so Node's ordinary module parser rejects them. Their async
+          # runtime shape is covered by tests/workflow-sync.test.js instead.
+          mapfile -d '' files < <(find . -type f \( -name '*.js' -o -name '*.cjs' -o -path './hooks/commit-msg' \) -not -path './workflows/sdd-implement.js' -not -path './tests/fixtures/workflow-agent-smoke.js' -not -path './.git/*' -not -path '*/node_modules/*' -print0)
+          if (( ${#files[@]} == 0 )); then
+            echo "No JavaScript files found."
+            exit 1
+          fi
+          for file in "${files[@]}"; do
+            echo "Checking ${file}"
+            node --check "${file}"
+          done
+
+      - name: Parse JSON files
+        shell: bash
+        run: |
+          mapfile -d '' files < <(find . -type f -name '*.json' -not -path './.git/*' -not -path '*/node_modules/*' -print0)
+          if (( ${#files[@]} == 0 )); then
+            echo "No JSON files found."
+            exit 1
+          fi
+          for file in "${files[@]}"; do
+            echo "Parsing ${file}"
+            node -e "JSON.parse(require('node:fs').readFileSync(process.argv[1], 'utf8'))" "${file}"
+          done
+
+      - name: Run project tests
+        shell: bash
+        run: |
+          if [[ -f package.json ]] && node -e "const p=require('./package.json'); process.exit(p.scripts?.test ? 0 : 1)"; then
+            npm test
+          else
+            echo "No package.json test script yet; project tests are not required."
+          fi
+
+  plugin-validation:
+    name: Claude Code plugin validation
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    env:
+      # Pin a stable validator so a new CLI release cannot silently change CI results.
+      # Update this deliberately after validating the plugin locally.
+      CLAUDE_CODE_VERSION: 2.1.205
+      DISABLE_AUTOUPDATER: 1
+
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v4
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+
+      - name: Install Claude Code validator
+        shell: bash
+        run: npm install --global "@anthropic-ai/claude-code@${CLAUDE_CODE_VERSION}"
+
+      - name: Validate Claude Code plugin
+        shell: bash
+        run: |
+          claude plugin validate . --strict
+          claude plugin validate .claude-plugin/plugin.json --strict

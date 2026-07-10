@@ -10,9 +10,9 @@
  * 状态字串由命令行第 1 个参数给出（working|idle）。
  *
  * 存储（满足"运行时、不提交"且按项目隔离）：
- * - 写到 `<git-common-dir>/sdd-runtime/<branch>.json`。所有 worktree 共享同一个 .git，故各终端天然读得到彼此；
+ * - 写到 `<git-common-dir>/sdd-runtime/<branch>-<session-key>.json`。所有 worktree 共享同一个 .git，故各终端天然读得到彼此；
  *   .git 不被版本库跟踪 → 自动不提交、不进历史、不造合并冲突。
- * - 一终端一文件（key=分支），各写各的 → 零写竞态（这是绕开"多终端同写一文件"竞态的关键）。
+ * - 一会话一文件（key=branch+session_id/transcript），同分支多终端不互相覆盖；单文件用 temp+rename 原子发布。
  * - 非 git 仓库则回退系统临时目录（按 cwd 区分）。
  *
  * 安全设计（fail-open）：
@@ -156,7 +156,22 @@ function main() {
   try {
     const d = runtimeDir(cwd);
     const safe = branch.replace(/[/\\]/g, '_');
-    fs.writeFileSync(path.join(d, safe + '.json'), JSON.stringify(record));
+    const terminalIdentity = data.session_id || data.transcript_path || process.env.CLAUDE_SESSION_ID || `legacy:${cwd}`;
+    const sessionIdentity = `${terminalIdentity}:${data.agent_id || 'root'}`;
+    const sessionKey = crypto.createHash('sha256').update(sessionIdentity, 'utf8').digest('hex').slice(0, 16);
+    record.sessionKey = sessionKey;
+    const destination = path.join(d, `${safe}-${sessionKey}.json`);
+    const temporary = path.join(d, `.${safe}-${sessionKey}.${process.pid}.tmp`);
+    try {
+      fs.writeFileSync(temporary, JSON.stringify(record));
+      fs.renameSync(temporary, destination);
+    } finally {
+      try {
+        if (isFile(temporary)) fs.unlinkSync(temporary);
+      } catch (e) {
+        // 尽力清临时文件
+      }
+    }
   } catch (e) {
     // 写失败静默——心跳尽力而为，绝不拖累会话
   }

@@ -1,0 +1,14 @@
+{
+  "name": "ayunxx-sdd",
+  "owner": {
+    "name": "Ayunxx"
+  },
+  "description": "Ayunxx 的 Claude Code SDD 插件分发目录。",
+  "plugins": [
+    {
+      "name": "sdd",
+      "source": ".",
+      "description": "从规格、设计和任务拆解到隔离实现、证据验证与 worktree 收尾的完整 SDD 工作流。"
+    }
+  ]
+}

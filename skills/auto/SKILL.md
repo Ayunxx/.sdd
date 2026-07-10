@@ -1,8 +1,8 @@
 ---
 description: 自动驾驶 / Drive the whole SDD pipeline from ONE command — auto-advances specify→clarify→plan→tasks→implement→verify, and STOPS at each human gate (via AskUserQuestion) to let you approve/revise/pause, then auto-continues. 全自动流程，但人工卡点处停下让你选。
-argument-hint: "<一句话功能描述> [--lite] [resume <feature-slug> 从中断处继续]"
+argument-hint: "<一句话功能描述> [--lite] [--workflow] [resume <feature-slug> 从中断处继续]"
 disable-model-invocation: true
-allowed-tools: Read, Write, Edit, Glob, Grep, Bash, Task
+allowed-tools: Read, Write, Edit, Glob, Grep, Bash, Task, Workflow
 ---
 
 # /sdd:auto — 全流程自动驾驶（人工卡点停下让你选）
@@ -15,7 +15,7 @@ allowed-tools: Read, Write, Edit, Glob, Grep, Bash, Task
 $ARGUMENTS
 
 ## 总原则
-- **效率默认（高效姿态）**：① 入口**自动判功能大小**——琐碎→建议跳过 SDD、小功能→**默认走 lite**（单 spec.md，跳 clarify/plan），复杂才完整流程；在需求卡点把判断结果告诉用户、可一键改档。② 实现阶段由编排器**按任务结构自选**是否走 Workflow 确定性并行档（多波次/高并行更划算，选了一句话告知即开跑）——不再要 ultracode/§8（仅当 §8 显式禁用才一律提示词编排）。目标：**该轻就轻、能并行就并行**，把人的操作和等待都压到最小。
+- **效率默认（高效姿态）**：① 入口**自动判功能大小**——琐碎→建议跳过 SDD、小功能→**默认走 lite**（单 spec.md，跳 plan/tasks），复杂才完整流程；在需求卡点把判断结果告诉用户、可一键改档。② 实现阶段默认使用提示词编排并按 Boundary/Waves 并发普通 implementer；只有用户在本次调用中显式传 `--workflow` 才使用动态 Workflow。目标：**该轻就轻、能并行就并行**，同时不隐式拉起更高成本、权限更宽的运行时。
 - **自动推进**：阶段之间你自己往下走，别要求用户记命令。
 - **卡点必停 + 引导**：在下列 🚦 处停下，**不是只问"通过吗"，而是引导用户完成这一步的人工操作**——见下方「引导式卡点」。拿到答复再继续；**绝不替用户拍板通过**。
 - **每阶段遵循对应命令的规则与模板**（specify/clarify/plan/tasks/implement/verify 的定义你已加载，照它们产出，别另起一套）。
@@ -30,63 +30,63 @@ $ARGUMENTS
 
 ## 流水线（🚦 = 停下让用户选）
 
-0. **隔离与安全编号前置（治"多终端各自 auto 撞 spec 编号 + 共享工作树互相 reset"）**
-   > 为什么必须前置：auto 流水线**自己从不建 `sdd/*` 分支/worktree**，所以 specify 那套"扫 `sdd/*` 取号防撞"对 auto 直跑**会失效**——多终端会算出同一个号、撞同一个 `specs/NNN-*`；同目录还会共享工作树互相 reset。所以先把"占位 + 隔离"做掉。
-   > **适用边界**：本机制只对**共享同一个 `.git` 的多终端/多 worktree** 成立（靠 git ref 锁串行）。各自独立 clone 之间不共享 ref，撞号只能靠合并解决，不在此范围。
+0. **Feature Worktree 前门（先确定唯一事实源，再产出任何规格）**
+   > 硬不变量：**一 feature = 一 `sdd/NNN-slug` 分支 = 一独立 worktree = 同一处规格、代码、任务进度与验证证据**。主 worktree 对 feature 只做 `/sdd:status` 等全局只读查看与串行 `/sdd:worktree finish`；项目级 init/constitution/stack 可串行维护，但必须提交到 base 后再建 feature。不得在主干上创建或推进 feature 规格。
+   > 本机制只对共享同一个 `.git` 的本机 worktree 成立；独立 clone 不共享 ref，编号冲突只能在合并时解决。
 
-   **0.1 检测站位**：`git rev-parse --abbrev-ref HEAD`。
-   - **已在 `sdd/NNN-slug` 分支**（身处某 feature 隔离 worktree）→ **复用该号、绝不重新分配**，跳到 0.5 正常往下跑。`resume` 同理。
-   - 在某个非主工作树但**分支名非 `sdd/NNN-slug`**（用户手建的非标准 worktree）→ 提示用户，**问要不要就在此处当作该 feature**，而非强行再套一层隔离。
-   - 在 main/master/共享目录 → 进 0.2。
+   **0.1 检测站位**：读取当前分支与 `git worktree list --porcelain`。
+   - **当前分支为 `sdd/NNN-slug`，且当前目录正是该分支登记的 worktree** → `FEATURE_ROOT = 当前目录`，复用分支中的编号和 slug，直接进 0.5。若输入是 `resume <target>`，必须先规范化并要求 target 与当前 `NNN-slug` **精确一致**；不一致立即停止，定位目标 worktree 并交接，绝不让 cwd 静默覆盖显式参数。后续所有 `specs/NNN-slug/*`、代码、`tasks.md` 与 `COMPLETION.md` 都只在这里读写。
+   - **当前在 main/master/base 主 worktree** → 进入 0.2；此时不创建 `specs/NNN-slug/`、不运行 SPECIFY。
+   - **当前在非标准分支或 detached worktree** → 停下说明该目录不满足 Feature 身份；引导先迁移/重建为 `sdd/NNN-slug` worktree，绝不在非标准目录继续写规格。
 
-   **0.2 问意图（AskUserQuestion，先别动 git）**：告诉用户"当前在共享目录/主干，直跑 auto 会①与别终端**撞编号**②同目录多 auto **共享工作树互相 reset**"，让选：
-   - **(a) 要并发 → 隔离后交接（默认推荐）**：auto 现在原子占号 + 建独立 worktree，再交接你去新终端续跑。
-   - **(b) 只这一个、不并发 → 就地轻量做**：仍**原子占号**（见 0.3，只是不建独立 worktree 目录）。
-   - **(c) 我自己先 `/sdd:worktree start`**：本会话停下，走单一前门。
-   - 🚨 **始终警告一次**：**绝不在同一目录开多个终端各自 `/sdd:auto`**——共享工作树+HEAD 会互相 reset/切分支 clobber。要并发：**一 feature = 一 `sdd/NNN-slug` 分支 = 一独立 worktree 目录 = 一终端**。
-   - 主动检测：若 `git branch --list 'sdd/*'` 已有在建 feature → 提示"检测到已有并发 feature，建议走 (a) 隔离，别选 (b)"。
+   **0.2 解析新建或续跑目标**：
+   - 新功能：先确认主 worktree `git status --porcelain` 为空，且 `specs/constitution.md`、已激活的 `specs/stacks/*` 等共享基线已提交到 base；否则停止，要求用户先提交/自行暂存，**不得自动 stash 或从看不到初始化文件的旧 base 创建 worktree**。然后由想法生成 kebab-case `slug`，并硬校验 `^[a-z0-9]+(?:-[a-z0-9]+)*$`；生成值含路径分隔符、`..`、空白、shell 元字符或不匹配就停止，不能“清洗后继续”。编号分配与显式 ID 校验必须逐字复用 `/sdd:worktree start` 的永久 `refs/sdd/feature-ids/NNN` expected-absent CAS 协议；auto 不维护第二套 `max+1` 算法。最终 branch 再用参数数组调用 `git check-ref-format --branch`。
+   - `resume <slug>`：先从 `git worktree list` 与 `git branch --list 'sdd/*'` 找精确目标。已有 worktree 就复用并交接；已有分支但没有 worktree 属旧版遗留，按 0.3 的“附着已有分支”处理，**不得再用 `-b`**。
+   - 若只在主 worktree 发现 `specs/NNN-slug/`、而 Feature Worktree 内没有，判定为**旧版 split-brain**：暂停流水线，按 `/sdd:worktree` 的迁移协议先把规格转移到 feature 分支并核对，不能让实现继续引用主干规格。
 
-   **0.3 原子占号（(a)(b) 都做——这是闭合碰撞的关键）**：
-   1. 由想法生成 kebab-case `slug`。
-   2. `NNN` = 对 `specs/NNN-*` + `specs/archive/NNN-*` + **嵌套归档 delta `specs/archive/*/deltas/NNN-*` 与 `specs/*/deltas/NNN-*`**（嵌进源里的 delta 也占全局号，必须递归扫到）+ `git branch --list 'sdd/*'`（共享 .git，**含别终端在建的号**）+ `git worktree list` **取并集 max+1**，零填充三位。
-   3. **原子占位 = 建分支**（无论 a/b 都建，这就是别人扫得见的占位）：
-      - **(a) 并发**：`git worktree add -b sdd/<NNN-slug> "../<repo>--<NNN-slug>" <base>`（建分支+独立目录）。
-      - **(b) 就地**：`git branch sdd/<NNN-slug>`（**只建分支引用、不切换、不建目录**——原子占住号且并发可见，本会话仍在原地工作于 `specs/NNN-slug/`）。该分支只是**占号标记**，功能做完后 `git branch -d sdd/<NNN-slug>` 删掉即可（工作已在原分支上）。
-      - **git 建分支是原子的 = 最终防线**：若因"分支已存在"失败（被并发抢先）→ **编号 +1 重试**该命令直到成功。
+   **0.3 原子创建或复用真实 Worktree**：
+   - 先把仓库根与目标 `../<repo>--<NNN-slug>` 解析成规范绝对路径，断言目标父目录严格等于仓库父目录、basename 精确匹配且不在仓库内部。所有 Git 调用使用独立 argv 参数，不把 slug/base/路径拼成 shell 字符串。
+   - **全新目标（分支不存在）**：先成功持有与 slug 精确匹配的永久 `refs/sdd/feature-ids/NNN` reservation，再 `git worktree add -b sdd/<NNN-slug> "../<repo>--<NNN-slug>" <BASE_SHA>`；创建失败时 reservation 不释放，只允许同 slug 恢复。reservation CAS 被别的 slug 抢先时重新扫描并取下一号，不能只等完整 branch 名冲突。
+   - **已有分支但没有 worktree（旧版占号分支）**：`git worktree add "../<repo>--<NNN-slug>" sdd/<NNN-slug>`，直接附着已有分支，**不使用 `-b`，不重建同名分支**。
+   - **已有分支且已有 worktree**：不创建任何东西，直接取其绝对路径。
+   - 不再提供“只建占号分支、留在主目录就地做”的路径；分支引用和真实 worktree 必须一起成为 Feature 身份。
 
-   **0.4（仅 (a)）交接**（建好 worktree 后停下，**绝不替用户跳进去续跑**——运行中的会话钉死在当前 cwd，搬不进新目录）：用 AskUserQuestion 告知：✅ 号 `NNN-slug` 已原子保留（别人不会再撞）· 📁 新目录绝对路径 · 👉 引导：①开新终端 ②`cd` 到该目录 ③启新 Claude ④跑 `/sdd:auto <原想法>`（0.1 会命中已在 worktree 内、复用号续跑）。本会话到此为止。
+   **0.4 交接到 Feature Worktree**：若本命令从主 worktree 发起，创建/定位完成后必须停下并告知：✅ `NNN-slug` 已保留 · 📁 Feature Worktree 绝对路径 · 👉 在该目录启动新终端/Claude。若这是刚创建、尚无规格产物的空目标，**只可重新运行 `/sdd:auto <原想法> [原 flags]`**；原想法尚未持久化，不能推荐 `resume`。只有目标已存在 `requirements.md`/`spec.md` 等可验证产物时，才可用 `/sdd:auto resume <NNN-slug>`。运行中的会话不能可靠改变自己的 cwd，因此**主会话不代跑后续规格阶段**。
 
-   **0.5 原有前置检查**（隔离/占号定了再做）：无 `specs/constitution.md` → 🚦 提示先 `/sdd:constitution`；无能力包 → 提示 `/sdd:stack add`；`resume <slug>` → 读现有产物定位断点。
+   **0.5 Feature 内前置检查**：只在 `FEATURE_ROOT` 内检查 `specs/constitution.md`、能力包与目标 `specs/NNN-slug/`。无宪法 → 🚦 提示先处理项目初始化；无能力包 → 提示 `/sdd:stack add`；`resume` → 必须先找到至少一份属于该 feature 的规格/阶段产物再定位断点，空目录或只有分支身份时 fail closed，要求用户重输原想法，不得凭 slug 反推需求。
 
-   > 一句话纪律：**隔离/占号在前，auto 在后**。auto 能代劳"建分支占号 + 建 worktree"，但"进隔离目录续跑"这最后一跳跨会话边界，只能交接给用户。**碰撞闭合保证：仅在共享 .git 下、且每个 feature 都经 0.3 建了 `sdd/*` 分支占位时成立。**
+   > 一句话纪律：**先进入 Feature Worktree，再写第一行功能规格**。主 worktree 维护已提交的项目级基线、看全局并串行 finish；Feature Worktree 承载从 specify 到 verify 的完整生命周期。
 
-1. **SPECIFY** → 按 specify 规则生成 `requirements.md`（`--lite` 则单 `spec.md`）。
-   > 号已在步骤 0 定死并由 `sdd/NNN-slug` 分支占住：specify 命中 0.1"已在 sdd worktree 内"复用号，或沿用步骤 0 的 `NNN-slug`，**不再重新扫号**。
+1. **SPECIFY** → 在 `FEATURE_ROOT/specs/NNN-slug/` 按 specify 规则生成 `requirements.md`（`--lite` 则单 `spec.md`）。立刻定义 `TARGET_SPEC = lite ? spec.md : requirements.md`、`TASK_STATE_FILE = lite ? spec.md : tasks.md`，后续不得再把 lite 硬编码回 full 文件。
+   > 号已在步骤 0 由真实 `sdd/NNN-slug` worktree 定死；specify 必须复用分支身份，**不再重新扫号，也不向主 worktree 写副本**。
    - **自动评审（默认开）**：按 specify step 5b 派 `spec-reviewer` 反压自修（specify「## 规格反压评审协议」）。**评审发现的歧义/需定夺项 → 转 `[NEEDS CLARIFICATION]`，不自己猜**，交下一步 CLARIFY 消化（消歧优先于自修）；只有机械类问题在本步自修。
    🚦 **需求卡点**：报路径 + 要点 + `[NEEDS CLARIFICATION]` 数量（含评审新增的）**+ 评审 Verdict（🟢/🟡/🔴 + 自修/残留）** → AskUserQuestion。
 
-2. **CLARIFY**（若有 `[NEEDS CLARIFICATION]`——**含评审转出的歧义**——或重大模糊）→ 按 clarify 规则提问。**有歧义必先在此消除，再进 PLAN**。
-   🚦 这一步**本身即卡点**（批量 AskUserQuestion），答完回填 requirements。
+2. **CLARIFY**（若 `TARGET_SPEC` 有 `[NEEDS CLARIFICATION]`——**含评审转出的歧义**——或重大模糊）→ 按 clarify 规则提问并回填同一个 `TARGET_SPEC`。有歧义必须先消除；**lite 消歧完成后跳过 PLAN/TASKS，直接进入 IMPLEMENT**，full 才继续第 3 步。
+   🚦 这一步**本身即卡点**（批量 AskUserQuestion）。
 
-3. **PLAN** → 按 plan 规则生成 `design.md`（遵循能力包；并按 plan step 1/3 **读 patterns/principles 目录、对本功能走一遍设计模式选型**，结论落 design §7.1）。
+3. **PLAN（仅 full）** → 按 plan 规则生成 `design.md`（遵循能力包；并按 plan step 1/3 **读 patterns/principles 目录、对本功能走一遍设计模式选型**，结论落 design §7.1）。lite 严禁生成 design.md。
    - **自动评审（默认开）**：按 plan step 4c 派 `design-critic` 反压自修（查 design↔requirements↔宪法 对齐、可追溯缺口、过度/欠设计）。
    🚦 **设计卡点**：高亮"偏离宪法 / 新依赖"等需批准项 + 可追溯覆盖 **+ design-critic Verdict** → AskUserQuestion。
 
-4. **TASKS** → 按 tasks 规则生成 `tasks.md`（Boundary + Waves）。
+4. **TASKS（仅 full）** → 按 tasks 规则生成 `tasks.md`（Boundary + Waves）。lite 的任务/Waves 已在 spec.md，严禁另建 tasks.md。
    - **自动对齐自检（默认开）**：按 tasks step 5b 做 design↔tasks 覆盖/越界/Boundary 反压自修。
    🚦 **拆解卡点**：报任务数 / Wave 数 **+ 覆盖自检结果** → AskUserQuestion（✅ 开始实现 / ✏️ 调整 / ⏸）。
 
-5. **IMPLEMENT** → 按 implement 编排器规则跑（波次并发、隔离子代理，implementer 报告前自跑门禁；无任务级独立验收，质量靠合并门 + `/sdd:verify` 兜底）。
-   - **（确定性并行档 · 编排器自选）** 进入实现时按 implement 的「模式选择」**自行判断**是否用 Workflow 确定性编排（多波次/高并行更划算）；选了**先一句话告知再开跑**——这是编排机制选择、非人工卡点，**不为它停**。不再要 ultracode、不再要 §8 放行（仅 constitution §8 显式"禁用"时一律提示词编排）。合规依据：用户调用 `/sdd:auto`（其指令要求你按需调 Workflow）本身即 Claude Code opt-in。
-   - 正常完成的任务**自动续跑下一波，不打扰用户**。
+4.5 **Workflow 首 Wave checkpoint（仅显式 `--workflow`）**：需求/消歧（lite）或拆解（full）获批后，展示本 feature 的规格/计划 diff 与待提交路径，AskUserQuestion 请求“提交批准后的规格 checkpoint 并启动首 Wave / 继续修改 / 暂停”。只有用户明确授权后，才精确 stage `TARGET_SPEC` 及 full 的 design/tasks 等本 feature 产物，检查 staged diff 无其它文件，提交 Conventional Commit，并确认 `FEATURE_ROOT` clean。未授权、提交失败或仍脏都暂停；不得直接进入 Workflow 后再让 clean-baseline 审计失败。
+
+5. **IMPLEMENT** → 按 implement 编排器规则从 `TASK_STATE_FILE` 读取任务并回填同一文件（full=`tasks.md`，lite=`spec.md`）；执行波次并发、隔离 implementer、独立 `code-reviewer` 风险门/波次抽样，最后由合并门与 `/sdd:verify` 共同兜底。
+   - **（默认提示词编排）** 进入实现时按 implement 的 Boundary/Waves 规则并发普通 implementer，不自动切到动态 Workflow。只有用户显式以 `/sdd:auto --workflow ...` 调用时才把该 flag 传给 implement；启动前执行工具权限/Git 可审计范围预检，失败立即停止并报告，不得空转或静默降级。
+   - **评审门不得省略**：每 Wave 开始先记录独立 Git 基线/工作区快照。`Risk: high`、`Review: required`、发生任何 `DEVIATION` 或实际 diff 触及共享边界的任务，必须在标 `[x]` 前派全新 `code-reviewer`；其余每 Wave 至少抽样 1 个实际有 diff 的任务。reviewer 自行核对真实 `git diff` 与 evidence，不能采信 implementer 自报。
+   - 只有 reviewer `PASS` 才能放行被审任务；`BLOCK`/`REVISE`/`INCONCLUSIVE` 均回 implementer 修复后用新 reviewer 上下文重审，最多 2 轮，仍未 PASS → 标 `[!] blocked` 并进入异常卡点。默认提示词编排满足任务门禁与 Wave 抽样后可自动续跑下一波；**显式 `--workflow` 不可自动跨 Wave**：每 Wave 回填 `TASK_STATE_FILE`/Evidence 后展示真实 diff、review verdict 与四类 gate，AskUserQuestion 请求授权精确提交该 Wave checkpoint。只有提交成功且工作树 clean，才重新解析完整任务图并调用下一 Wave；拒绝/失败就暂停，不得越权 commit 或空转重试。
    - **记录偏移（与 /sdd:implement 一致，别丢）**：凡 implementer 回报的 `DEVIATION` 非"无"、或实现与 design 不符——**不管是否阻塞**，都**立即追加到 `design.md`（lite 则 `spec.md`）的 `## Deviations / 实现偏移` 段**（`原 X → 实际 Y · 原因 · 影响的 AC`）。小偏移自动记下不打断；须改方向的（blocked）才停下问。
-   - **记录延后（与 /sdd:implement 一致，防漏掉）**：凡决定"这块现在不做、未来补"——**立即追加一条进 `specs/BACKLOG.md` 的 `## 待补齐` 段**（`BL-NNN · 来源 · 内容 · 因 · 目标 · 记于`；文件不存在则先按 init 骨架建）。延后 ≠ 偏移：偏移记 Deviations（冻结），延后进长存台账（会被回捞）。**绝不只在对话里答应**。
+   - **记录延后（与 /sdd:implement 一致，防漏掉）**：对规范化 `Source/AC/Content/Reason/Target` 算稳定 `decisionDigest`，按 init 的永久 backlog-id ref CAS 原子占 ID并新建 item；禁止追加共享 BACKLOG.md。CAS 失败取下一 seq，只有 blob/request/item 三方 digest 一致才恢复，Source 相同但 Content/Reason 不同不得复用。
    - 仅在**异常**时 🚦 停下 AskUserQuestion：implementer 报 `blocked`（须偏离 design）、反复越界 Boundary、要延后某范围、或要做破坏性操作 → 让用户决定（改设计 / 接受偏移(记 Deviations) / **延后补齐(记 BACKLOG)** / 跳过不做(记 Non-Goals) / 停）。
 
 6. **VERIFY** → 按 verify 规则出 punch list（按 AC 的 `Verify` 标签）。
    🚦 **验收卡点**：AskUserQuestion（✅ 通过去收尾 / 🔧 修问题回 implement / ⏸）。
 
-7. **收尾** → 🚦 **确认**是否 `/sdd:worktree finish`（对账 + 合并门 + 自动删 worktree，破坏性，必单独确认）。
+7. **收尾** → 🚦 提示先提交 Feature Worktree 中同一批规格、代码、任务进度与验证证据，再回到**主 worktree 串行执行** `/sdd:worktree finish <NNN-slug>`（对账 + 合并门 + 合并 + 清理，破坏性，必单独确认）。
 
 ## 卡点标准选项（AskUserQuestion）
 每个 🚦 至少给：`✅ 通过，继续下一阶段` / `✏️ 我要改（我会说明）` / `⏸ 暂停（保留产物，之后 resume 续跑）`。按阶段加特有项（如设计阶段"批准偏离宪法"、验收阶段"接受 manual-HW 待背书"）。

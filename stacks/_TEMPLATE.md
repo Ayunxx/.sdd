@@ -26,6 +26,7 @@
 ## 4. 测试策略 / Testing
 - 测试类型与框架:
 - 该领域"先红后绿"如何落地:
+- 测试寿命：哪些关键契约/安全/状态/迁移/并发路径必须 persistent；哪些探索/硬件探针可 ephemeral:
 - 验证手段（无自动化测试时）:
 
 ## 5. 领域红线与常见坑 / Red Lines & Pitfalls
@@ -38,6 +39,7 @@
 
 ## 7. 本层质量门禁 / Layer Quality Gate（可选，覆盖 constitution §3 默认）
 > 全栈 monorepo 各层（包）命令不同时，在此声明**本层**的门禁命令；implementer 处理属于本层的任务时用这套，而非全局默认。未声明则回退到 §3。
-- Format: [如 仅本包 `pnpm --filter web format`]
+- Format: [写入型 formatter 必须接收本任务 Boundary/实际 changed files 的显式 argv，如 `pnpm exec prettier --write -- <file...>`；不得在并发 worker 中扫写整个 package/repo]
 - Lint / Typecheck: [本包的 lint/类型检查]
 - Test: [本包的测试命令]
+- Isolation: [端口、测试库/schema、缓存、临时目录、浏览器 profile 如何按 task 唯一；包级写门禁移到 Wave checkpoint 串行执行]

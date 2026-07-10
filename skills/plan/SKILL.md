@@ -1,8 +1,8 @@
 ---
 description: 设计 / Turn requirements.md into a technical design.md (HOW). 第二阶段：架构、数据模型、接口契约、技术选型、可追溯表。不写实现代码。
-argument-hint: "[可选：功能目录名，如 001-user-auth；省略则取最新]"
+argument-hint: "[可选：当前功能目录名，如 001-user-auth；省略则取当前 sdd 分支]"
 disable-model-invocation: true
-allowed-tools: Read, Write, Edit, Glob, Grep, Bash(ls *), Bash(cat *), Task
+allowed-tools: Read, Write, Edit, Glob, Grep, Bash(ls *), Bash(cat *), Bash(git *), Task
 ---
 
 # /sdd:plan — 技术设计
@@ -13,6 +13,8 @@ allowed-tools: Read, Write, Edit, Glob, Grep, Bash(ls *), Bash(cat *), Task
 $ARGUMENTS
 
 ## 执行步骤
+
+0. **Feature 身份门禁**：读取当前分支与 `git worktree list --porcelain`。只有当前分支形如 `sdd/NNN-slug`、且当前目录正是该分支登记的 worktree 时才允许写设计；目标目录必须是该分支对应的 `specs/NNN-slug/`。在主 worktree、其他分支、detached HEAD 或显式参数指向别的 feature 时停止并引导进入正确目录。
 
 1. **读全上下文**（缺一不可）：
    - `specs/constitution.md`（宪法，技术选型/约束以它为准）
@@ -70,7 +72,7 @@ $ARGUMENTS
 - **考虑过但不用**：如〈某处〉看似可上〈工厂〉，但当前只有一种产品、未来无明确扩展 → 直接 new，守 YAGNI。
 
 ## 8. Testing Strategy / 测试策略
-（按宪法的测试纪律：要写哪些测试、怎么验每条 AC）
+（逐条映射 AC：测试层级/场景、风险、persistent|ephemeral|none(理由)、复用的既有 harness、实际门禁命令与证据落点。历史 Bug、公共契约、鉴权安全、状态机/领域不变量、迁移、并发事务、共享核心能力必须留持久回归测试；探索/诊断/硬件探针才可 ephemeral。）
 
 ## 9. Traceability / 可追溯表
 > 每条需求都要落到设计；不允许有需求无对应设计。

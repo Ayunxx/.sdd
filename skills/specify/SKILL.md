@@ -2,7 +2,7 @@
 description: 规格 / Turn a one-line feature idea into a structured requirements.md (WHAT & WHY only). 第一阶段：生成需求规格，含用户故事与验收标准，不做设计、不写代码。支持 --lite 轻量分级。
 argument-hint: "<一句话功能描述> [--lite 小功能走单文件精简路径]"
 disable-model-invocation: true
-allowed-tools: Read, Write, Edit, Glob, Bash(ls *), Bash(cat *), Task
+allowed-tools: Read, Write, Edit, Glob, Bash(ls *), Bash(cat *), Bash(git *), Task
 ---
 
 # /sdd:specify — 需求规格
@@ -16,24 +16,22 @@ $ARGUMENTS
 
 0. **先判分级（防止小事过度规格化）**：
    - **Trivial**（单文件改 / 格式 / 一目了然的小改）→ 建议**直接跳过 SDD**，对话里做掉即可，不必建规格。**但有安全闸**：若它**碰到共享/跨模块代码**（公共工具、共享类型/模型、路由/入口、被多处依赖的核心）——改一行也可能炸别人——**别走 trivial 直跑，升级到至少 lite、经合并门进 main**。"小"是文件数小，不是风险小。
-   - **Small**（1–3 文件、单一明确、无需多轮澄清）→ 走 **`--lite`**：只产**一份 `spec.md`**（需求要点+简要设计+任务三合一），跳过 clarify/plan/verify，直接 `/sdd:implement`。
+   - **Small**（1–3 文件、单一明确、无需多轮澄清）→ 走 **`--lite`**：只产**一份 `spec.md`**（需求要点+简要设计+任务三合一），跳过独立的 clarify/plan/tasks 文档阶段，直接 `/sdd:implement`，完成后仍跑一次与改动范围相称的 `/sdd:verify`。
    - **Normal/Large**（多文件、有不确定性、需设计）→ 走完整流程（本命令默认）。
    - 用户带了 `--lite`、或你判断属 Small → 进 lite 分支（见步骤 4b）。**修改一个已上线/已归档的功能**：不要回去重写老规格——**新建一个小规格记录这次变更（delta）**（规格是决策记录，合并后冻结）。
    - **delta 必须标源（关键，否则归档时归不回源）**：识别出本规格是 delta 时，在它的头部写 **`Delta-of: MMM-target-slug`**（被修改的目标功能 ID，到 `specs/` 或 `specs/archive/` 里找）。delta **优先走 `--lite`**。这条标记是 `/sdd:worktree finish` 把 delta **物理归档进源目录** `specs/archive/MMM-target/deltas/` 的唯一依据——漏标 = 又散落成孤立 NNN。
-   - **delta 的一次性测试要克制（防过度测试）**：delta 多是小改，只写**够验证"这次新增/改动行为"**的一次性测试、验完即删，绝不为一个增量铺一套测试类（§4）。在 delta 规格验收里写明"用几个聚焦用例验 AC、验过即删"，别让下游 implementer 误以为要新建一堆测试留库。
+   - **delta 测试要克制但不能丢回归**：只为本次新增/改变的行为补聚焦用例，优先复用源功能现有 harness。若修 Bug、改变公共契约/鉴权/状态机/迁移等高风险行为，新增测试必须持久化；纯探索证据才允许临时删除（§4）。
 
 1. **读约束**：先读 `specs/constitution.md`（若存在）。需求不得违背宪法。若不存在，提示用户最好先 `/sdd:constitution`，但仍可继续。
 
-2. **分配功能目录（并发安全·防撞号）+ 检查交叉**：
-   - **已在 sdd worktree 内？** 先看当前分支 `git rev-parse --abbrev-ref HEAD`：若形如 `sdd/NNN-slug` → **直接复用该分支的 `NNN-slug`，不要重新分配编号**（重新扫会和别的终端撞号；号在建 worktree 时已定）。
-   - **否则分配新号——别只看本地 `specs/`**（那只反映本分支已提交的，多终端各扫各的必撞）。编号 = 对以下三者的 NNN **取并集最大值 +1**，零填充三位：
-     1. `specs/NNN-*` + `specs/archive/NNN-*`，**外加任意深度的归档 delta** `specs/archive/*/deltas/NNN-*` 与 `specs/*/deltas/NNN-*`（嵌套进源里的 delta 也占全局号，扫号必须递归看到，否则会撞号）；
-     2. `git branch --list 'sdd/*'`（所有在建 feature 分支——**共享 .git，能看见别的终端占的号**）；
-     3. `git worktree list`（在用的 worktree）。
-   - 由功能描述生成 kebab-case slug。目录名 = `specs/NNN-slug/`。
-   - **落地前再防撞**：若该 `NNN` 已被 `specs/` 或某 `sdd/NNN-*` 分支占用 → **+1 重试**直到不撞。（slug 完全相同 = 可能在重复做同一功能，提醒用户确认而非默默撞。）
+2. **确认 Feature 身份（硬门禁）+ 检查交叉**：
+   - 读取 `git rev-parse --abbrev-ref HEAD` 与 `git worktree list --porcelain`。只有同时满足以下两项才允许写规格：① 当前分支形如 `sdd/NNN-slug`；② 当前目录正是该分支登记的 worktree。此时 **Feature ID 直接复用分支的 `NNN-slug`**，目录固定为 `specs/NNN-slug/`，不得重新扫号或改 slug。
+   - **若当前在 main/master/base 主 worktree**：不得在主干直接分配编号、创建 `specs/NNN-slug/` 或继续生成规格。先按 `/sdd:worktree start <slug>` 的协议原子创建 `sdd/NNN-slug` 分支及其独立 worktree，然后停下并报告其绝对路径；请用户进入该目录重新运行 `/sdd:specify <原想法>`。运行中的会话不得假装已经切换 cwd 后继续写。
+   - **若当前是其他分支、detached HEAD，或分支与登记目录不匹配**：停止写入，说明 Feature 身份不合法，引导迁移/重建为标准 `sdd/NNN-slug` worktree；不得猜测目标目录。
+   - **旧版 split-brain 迁移闸**：如果主分支已有 `specs/NNN-slug/`、但对应 Feature Worktree 中没有，先按 `/sdd:worktree` 的迁移协议把规格与相关历史转移到 feature 分支并核对，迁移完成前不得继续 specify/implement。规格、代码、任务进度与验证证据必须从第一行起同处一个 Feature Worktree。
+   - 编号只由 `/sdd:worktree start` 分配：它把规格/归档/delta/分支/worktree 与永久 `refs/sdd/feature-ids/NNN` reservation 取并集，并以 expected-absent CAS 原子保留纯 NNN；不同 slug 也不能共享编号。`/sdd:specify` **只消费已分配的 Feature 身份**，不再拥有第二套编号算法。
    - **扫一眼已有 feature 是否与本功能交叉**（共享 model/类型/契约/热点文件）。若有明显共享底座，**建议先抽一个 foundation feature（如 `000-shared-<thing>`）落 main，再做本功能**（见 `/sdd:worktree` 跨 feature 协调），并在下方 `## 11 Dependencies` 记录依赖。
-   - **回捞待补齐台账（防延后项漏掉，必做）**：读 `specs/BACKLOG.md` 的 `## 待补齐` 段（**文件不存在则跳过本步**，老项目尚未建过台账），挑出**与本功能相关、或目标指向"本次/下个/现在"的延后项**，**主动列给用户**问要不要纳入本 feature 一并做。纳入的：在本规格里转成正式 US/AC，并把该 `BL-NNN` 在台账标 `[~] 已排期 · 纳入:NNN-本slug`。没有相关项就跳过、不打扰。**这是"延后不被漏掉"的回捞入口**——台账只进不出就等于黑洞。
+   - **回捞待补齐（必做）**：扫描 `specs/backlog/BL-*.md` 的 canonical items，并兼容读取旧 `specs/BACKLOG.md` 条目；挑出与本功能相关或 Target 指向本次的 open 项，主动问是否纳入。纳入后在规格转成正式 US/AC，并只编辑对应 item 为 `Status: scheduled`、`Scheduled-in: NNN-slug`。同 ID 多文件、owner ref 不匹配或跨 ref 内容冲突先报错，不得猜。没有相关项就跳过。
 
 3. **充分发现（高质量的前提）**：把输入扩成完整需求前，**主动按维度过一遍**，缺一个维度规格就缺一块——
    - **角色与权限**：谁用？什么权限/身份下？
@@ -112,6 +110,7 @@ $ARGUMENTS
 ```markdown
 # Spec (lite): <功能名称>
 - **Feature ID:** NNN-slug · **Status:** Draft · **Mode:** lite
+- **Progress:** 0 / N done
 - **Delta-of:** [仅 delta 填：被修改的目标功能 ID，如 003-user-auth；非 delta 删掉此行]
 
 ## What & Done / 目标与验收
@@ -121,26 +120,31 @@ $ARGUMENTS
 - 技术要点、文件布局、接口/数据（几行，遵循激活的能力包约定）
 
 ## Tasks（含 Boundary + 简单 Waves）
-- [ ] **T1** <标题> · Boundary: `<文件>` · Depends: — · Done when: <判据>
-- [ ] **T2** … · Boundary: … · Depends: T1 · Done when: …
+- Boundary 语法：精确文件写 `src/a.ts`；目录必须写 `src/screens/login/` 或 `src/screens/login/**`。无尾斜的 `src/screens/login` 会被当成精确文件，不得用来表示目录。
+- [ ] **T1** <标题> · Boundary: `<精确文件或带 / 的目录>` · Depends: — · Risk: low|medium|high(<理由>) · Review: required|wave-sample · Test policy: persistent|ephemeral|none(<理由>) · Resources: `[]`|`port:...`|`test-db:...` · Gate isolation: scoped|wave-exclusive · Done when: <判据>
+- [ ] **T2** … · Boundary: … · Depends: T1 · Risk: … · Review: … · Test policy: … · Resources: … · Gate isolation: … · Done when: …
 - Waves: W1(并行) T1,T?；W2 T2 …
 
+## Implementation Evidence / 实现证据（由 /sdd:implement 当场追加）
+| Task/Wave | State/Verdict | Baseline | Actual diff | Gates | Reviewer / Residual risk |
+|-----------|---------------|----------|-------------|-------|--------------------------|
+
 ## Quality / 质量门禁
-- 遵循 constitution §3：format/lint/typecheck/test 全过（implementer 报告前自跑 + 合并门硬门禁）
+- 遵循 constitution §3/§4：format/lint/typecheck/test 给出命令与退出码证据；高风险/偏移/共享边界任务独立 review；合并门跑编译 + fitness + 受影响持久测试
 ```
-> lite 完成后**直接** `/sdd:implement`（它会从 spec.md 的 `## Tasks` 段取任务），无需 clarify/plan/tasks/verify。功能若中途变复杂，再"升级"为完整三件套。
+> lite 若没有 `[NEEDS CLARIFICATION]`，完成后直接 `/sdd:implement`（它会从 spec.md 的 `## Tasks` 段取任务），无需 plan/tasks；若轻量评审留下歧义，先跑 `/sdd:clarify`，它会直接回填 spec.md。实现完成后仍跑 scoped `/sdd:verify` 生成证据与 COMPLETION。功能若中途变复杂，再“升级”为完整三件套。
 > ⚠️ **lite 省的是规格阶段，不是合并门**：lite 一样会 merge 进 main → 一样能改坏别的功能 → **合并时照走 `/sdd:worktree finish` 的合并门**（凡入 main 必走，不按功能大小豁免）。别担心慢——合并门成本随改动范围由 build-cache 自动伸缩，lite 只动一两个模块、门只重跑那点、很便宜。唯一近乎免门的是**纯非代码改动**（docs/注释/无测试覆盖的配置），那种情况门本身就没东西可跑。
 
-5. **质量自检（写完必做，逐项对照下方 Rubric）**：把刚写的规格对照 `## 质量自检清单` 逐条打勾；**任一不过 → 当场补/改或标 `[NEEDS CLARIFICATION]`**，别把不达标的规格交出去。报告自检结果（X/N 项通过 + 未过项）。
+5. **质量自检（写完必做，逐项对照下方 Rubric）**：把刚写的规格对照 `## 质量自检清单` 逐条打勾；**任一不过 → 当场补/改或标 `[NEEDS CLARIFICATION]`**，别把不达标的规格交出去。lite 还必须检查固定 `Progress: 0 / N done`、每任务 `Boundary/Depends/Risk/Review/Test policy/Resources/Gate isolation/Done when`、Waves 与空的 `Implementation Evidence` 表头都存在；Boundary 中目录均以 `/` 或 `/**` 结尾，同 Wave 的 Boundary/Resources 不重叠且 `wave-exclusive` 任务独占 Wave。报告自检结果（X/N 项通过 + 未过项）。
 
-5b. **自动评审 + 反压自修（规格层把关，默认开，别跳过）**：用 `Task` 派 **`spec-reviewer`** 子代理（独立干净上下文）评审刚写的 requirements.md，按下方「## 规格反压评审协议」处理 Verdict——这就是"文档生成后自动派审查 agent 查对齐"的落点。
+5b. **自动评审 + 反压自修（规格层把关，默认开，别跳过）**：用 `Task` 派 **`spec-reviewer`** 子代理（独立干净上下文），显式传 `MODE=full|lite` 与 `SPEC_SOURCE=requirements.md|spec.md`，按下方协议处理 Verdict。
    - **full 模式**：完整反压——**歧义/需定夺类 blocking 转 `[NEEDS CLARIFICATION]` 走 `/sdd:clarify` 问用户（消歧优先）**，机械类 blocking 自修→再评（最多 2 轮）。
    - **lite 模式**：对 `spec.md` 跑**一轮**轻量评审（只报 Verdict + blocking，不自动多轮——lite 保持轻量）；有歧义同样转 `[NEEDS CLARIFICATION]` 提醒用户先消歧。
 
 6. **完成后**：
    - 报告文件路径、模式（full / lite）、**质量自检结果 + 评审 Verdict**（🟢/🟡/🔴 + 自修了什么 + 残留问题）。
    - full：列出 `[NEEDS CLARIFICATION]` 数量；提示下一步（有待澄清 → `/sdd:clarify`，否则 → `/sdd:plan`）。
-   - lite：提示可直接 `/sdd:implement`。
+   - lite：有 `[NEEDS CLARIFICATION]` 就提示 `/sdd:clarify`；否则提示可直接 `/sdd:implement`，完成后跑 scoped `/sdd:verify`。
 
 ## 规格反压评审协议 / Spec Bounce-back Review（specify·plan·tasks·auto 共用）
 > 把"文档生成 → 自动评审 → 按需自修 → 再评审"做成默认 bounce-back 机制，对齐不再靠人记得手动派。

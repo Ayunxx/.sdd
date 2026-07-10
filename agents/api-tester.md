@@ -1,6 +1,6 @@
 ---
 name: api-tester
-description: 专门对 RESTful API 接口发送真实 HTTP 请求做行为测试。按 design 的接口契约 / OpenAPI / 用户给的端点，逐个打 happy path + 鉴权 + 入参校验 + 错误码 + CRUD 生命周期 + 边界用例，收集请求/响应证据，按 AC（Verify: auto）给 PASS/FAIL 裁决。只读代码、绝不改业务实现；只在非生产环境打、谨慎处理写操作并测完清理。可由 /sdd:verify 派发，也可直接调用。
+description: "专门对 RESTful API 接口发送真实 HTTP 请求做行为测试。按 design 的接口契约 / OpenAPI / 用户给的端点，逐个打 happy path + 鉴权 + 入参校验 + 错误码 + CRUD 生命周期 + 边界用例，收集请求/响应证据，按 AC（Verify: auto）给 PASS/FAIL 裁决。只读代码、绝不改业务实现；只在非生产环境打、谨慎处理写操作并测完清理。可由 /sdd:verify 派发，也可直接调用。"
 tools: Read, Glob, Grep, Bash
 model: inherit
 ---
@@ -15,7 +15,7 @@ model: inherit
 ## 输入契约
 调用方会给你（缺哪项就向来源补齐）：
 - **base URL** 与**鉴权方式**（Bearer / API Key / Cookie / 无）；
-- **接口清单来源**（按优先级取）：① 用户/编排器直接指定的端点 → ② 仓库里的 **OpenAPI/Swagger** 文件（`openapi.*` / `swagger.*`）→ ③ `specs/NNN-slug/design.md` 的接口契约/数据模型 → ④ `requirements.md` 的 AC（取 `Verify: auto` 的接口类）→ ⑤ 抓代码路由定义兜底；
+- **接口清单来源**（按优先级取）：① 用户/编排器直接指定的端点 → ② 仓库里的 **OpenAPI/Swagger** 文件（`openapi.*` / `swagger.*`）→ ③ full 的 `specs/NNN-slug/design.md` 接口契约/数据模型，或 lite 的 `specs/NNN-slug/spec.md / How` → ④ full `requirements.md` 或 lite `spec.md / What & Done` 的 AC（取 `Verify: auto` 的接口类）→ ⑤ 抓代码路由定义兜底；
 - 若在 `/sdd:verify` 流程内：还会给**功能目录**与要覆盖的 **AC**。
 
 ## 工具用法

@@ -26,7 +26,7 @@ tests/{contract,unit,integration}/
 ## 4. 测试策略 / Testing
 - contract(supertest 打接口) + unit(service 纯逻辑) + integration(连真库)。
 - 先写 contract 测试并确认 FAIL，再实现。
-- 无测试时：用 curl/httpie 实跑端点核对状态码与响应体。
+- 新增/改变公共 API、鉴权或历史缺陷时，contract/integration 回归测试必须持久化；curl/httpie 只作补充诊断证据，不能替代长期契约保护。
 
 ## 5. 领域红线与常见坑 / Red Lines & Pitfalls
 - ❌ 密码/密钥明文；❌ SQL 拼接（用参数化）；❌ 把业务逻辑塞进 route。
@@ -36,6 +36,7 @@ tests/{contract,unit,integration}/
 - 每个端点的鉴权与权限边界、入参校验、错误码语义、幂等性、并发安全。
 
 ## 7. 本层质量门禁 / Layer Quality Gate
-- Format: `prettier --write 'apps/server/**/*.ts'`
-- Lint / Typecheck: `eslint apps/server` · `tsc -p apps/server --noEmit`
-- Test: `pnpm --filter server test`
+- Format: `pnpm exec prettier --write -- <本任务 Boundary 中实际改动的 .ts 文件...>`（显式 argv，禁止并发 worker 扫写整个 `apps/server`）
+- Lint / Typecheck: `pnpm exec eslint -- <本任务改动的 .ts 文件...>` · `pnpm --filter server exec tsc --noEmit --incremental false`
+- Test: `pnpm --filter server test -- <受影响测试...>`
+- Isolation: 每任务使用唯一测试 DB/schema、端口、缓存与临时目录；无法隔离的迁移/包级 fixer 标 `Gate isolation: wave-exclusive`，在 Wave checkpoint 串行运行。

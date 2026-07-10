@@ -23,7 +23,7 @@ $ARGUMENTS
 
 ### `add <领域...>`（最常用）
 把一个或多个内置包**落地到项目**并登记：
-1. 定位 catalog 源：依次尝试 `${CLAUDE_PLUGIN_ROOT}/stacks/<name>.md` → 插件安装目录 → 当前 `.sdd/stacks/`。**找不到源**就按 `_TEMPLATE.md` 的结构，用你的领域知识**现场生成**一份高质量的 `<name>.md`（内容要是"可照做的约定"，参考内置包风格）。
+1. 定位 catalog 源：依次尝试 `${CLAUDE_PLUGIN_ROOT}/stacks/<name>.md` → 插件安装目录 → 当前项目 `.claude/sdd/stacks/<name>.md`（`--vendor` 固定布局）。**找不到源**就按 `_TEMPLATE.md` 的结构，用你的领域知识**现场生成**一份高质量的 `<name>.md`（内容要是"可照做的约定"，参考内置包风格）。
 2. 写入项目 `specs/stacks/<name>.md`（已存在则询问是否覆盖/合并）。
 3. 在 `specs/constitution.md` 的 `## Stacks & Skills` 段登记该包（无此段则创建）。
 4. 提醒：默认技术栈可在宪法里覆盖；可继续 `/sdd:plan`。

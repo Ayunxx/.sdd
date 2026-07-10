@@ -20,7 +20,7 @@ db/
 
 ## 4. 测试策略 / Testing
 - 迁移可正向执行 + 可回滚；约束（唯一/外键/非空）有针对性测试。
-- 用一次性测试库跑迁移，校验最终 schema 与预期一致。
+- 用可销毁的隔离测试库跑迁移，校验最终 schema 与预期一致；**库实例可以一次性，迁移断言/回归测试代码必须持久化**。
 
 ## 5. 领域红线与常见坑 / Red Lines & Pitfalls
 - ❌ 生产库直接改表不留迁移；❌ 破坏性变更（drop/改类型）不先确认、不备份。
@@ -32,4 +32,4 @@ db/
 
 ## 7. 本层质量门禁 / Layer Quality Gate
 - Lint: `sqlfluff lint db/migrations`（SQL 风格统一）
-- Test: 在一次性测试库上跑全部迁移 + 校验最终 schema（如 `make db-test`）
+- Test: 在隔离测试库上跑全部迁移 + 持久化 schema 断言（如 `make db-test`）

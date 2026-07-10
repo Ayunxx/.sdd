@@ -4,17 +4,17 @@
 
 > 适用：以 Claude Code 为核心开发工具、希望把同一套纪律复用到多个项目。
 
-**能力全景**（v0.28）—— 从一个想法到上线，全链路有据可依、并发安全、质量兜底：
+**能力全景**（v0.29）—— 从一个想法到上线，全链路有据可依、并发安全、质量兜底：
 
 | 维度 | 提供什么 |
 |------|---------|
 | **全流程驱动** | `/sdd:init` 一键初始化项目 · `/sdd:auto` 自动驾驶（人工卡点引导你选）或手动逐步：立宪→规格→设计→拆解→实现→验证→收尾 |
-| **核心引擎**（防偏移·并发） | 🧊 实现期每任务**隔离子代理**（不随长会话退化）· ⚡ Boundary+Waves **波次并发** |
-| **质量 & 防全局偏移** | 代码质量门禁(format/lint/typecheck 硬强制，implementer 报告前自跑) · 测试**一次性自验(用完即丢)** · **合并门只编译改动模块 + 架构 fitness** · 功能级 `/sdd:verify` 行为验证 · 规格**对账后冻结** · 治"越做越偏/越冗余" |
-| **并发协作** | `/sdd:worktree` 多终端物理隔离 · `/sdd:sync` 跨 feature 共享 · `/sdd:status` 派生式仪表盘 + **实时心跳**（hook 自动上报各终端在做哪个 feature/第几任务/忙闲存活，多终端零冲突） |
+| **核心引擎**（防偏移·并发） | 🧊 实现期每任务**隔离 implementer** · ⚡ Boundary+Waves 波次并发 · 独立 Git auditor 对 Git 可见净变化做 fail-closed 对账 |
+| **质量 & 防全局偏移** | format/lint/typecheck/test 的**命令+退出码证据** · 高风险任务独立 `code-reviewer` · 关键回归测试持久化 · 合并门执行改动模块编译 + 架构 fitness + **受影响测试** · `/sdd:verify` 逐 AC 实跑 |
+| **并发协作** | **一 feature 一分支一 worktree**，规格/代码/进度/证据同源 · `/sdd:sync` 跨 feature 共享 · `/sdd:status` 派生式仪表盘 + 实时心跳 |
 | **领域覆盖** | 能力包注入：全栈/移动/小程序/H5/PC/服务端/数据库/嵌入 + 任意 Claude Code skill |
 | **知识辅助** | 24 种设计模式 + 工程原则(SOLID/Clean/DDD/12-Factor/高可用) 辅助 design 选型 |
-| **可选加速** | 确定性 Workflow 编排（编排器按任务结构自选，无需 ultracode；§8 可禁用） |
+| **可选加速** | 显式 `--workflow` 的动态 Workflow 编排（默认不自动拉起；§8 可彻底禁用） |
 | **保持轻量** | lite 分级 / 完成即冻结归档 / 自动右尺寸——文档量随"在建功能数"走，不随项目历史膨胀 |
 
 > 最初为解决"后期繁重 / 实现后偏移 / 不支持并发"三大痛点而生（核心引擎的隔离 + 并发两条），后续逐步补齐质量、并发协作、领域覆盖与知识层。
@@ -30,9 +30,9 @@
 
 1. **文档即事实来源，但必须保持真实**：规格是权威，可一旦失真就毒害所有下游（隔离子代理、verify、analyze 都信它）。所以**冻结前先对账**（reconcile）把规格校准到"实际所建"，再封存——之后不追代码，要改就开新 delta。
 2. **真相锚定，视图派生**：状态不存一份共享文件——**一功能一份**存各自目录（归属由 git worktree 唯一确定），**全局仪表盘实时派生、零落盘** → 多终端并发零冲突零串行。
-3. **确定性工具 > AI 自觉**：风格/架构一致性靠 formatter/linter/typecheck/fitness 强制（隔离子代理会放大漂移，只能靠统一工具抹平）。
-4. **局部隔离，全局设门**：任务级隔离实现 + implementer 报告前自跑门禁；功能级合并门**编译改动模块 + 架构 fitness**——防把 main 编译搞坏、防架构侵蚀；行为是否达成 AC 由 `/sdd:verify` 一次性验证。
-5. **跑了才算数**：合并门与 `/sdd:verify` 亲自跑测试、基于**实际运行证据**判定，不信口头声称。
+3. **确定性工具 > AI 自觉**：风格/架构一致性靠 formatter/linter/typecheck/fitness；Boundary 用静态范围、独立 Git 快照和 reviewer 多层对账，不只采信 implementer 的文件自报。Git auditor 是 agent 介导的证据源，不冒充文件系统沙箱。
+4. **局部隔离，全局设门**：任务级隔离实现 + 风险分层独立 code review；功能级合并门运行改动模块编译、架构 fitness 与受影响回归测试，`/sdd:verify` 再逐条验证 AC。
+5. **证据先于结论**：`passed` 文本不算门禁。实际命令、退出码、输出摘要/日志、reviewer verdict 和被测 commit 能对应起来，才算完成。
 6. **克制优先**：能跳过就跳过（trivial 不上 SDD）、小事走 `--lite`、完成即冻结归档、YAGNI 不为用而堆模式/架构——文档量随"在建功能数"走，不随项目历史无限涨。
 
 ---
@@ -54,61 +54,70 @@
 | `/sdd:auto <想法>` | **全流程驱动** | 串起下列全部 | 自动推进 + 卡点停下让你选（approve/改/暂停），可 `resume` 续跑 |
 | `/sdd:constitution` | 立宪（一次性） | `specs/constitution.md` | **自动扫项目（任意语言）**识别技术栈+采用已有门禁命令，生成宪法草稿供确认 |
 | `/sdd:stack [list\|add\|new\|skill]` | 能力注入 | `specs/stacks/*.md` | 注入领域能力包（全栈/移动/小程序/H5/PC/服务端/数据库）与 skill |
-| `/sdd:specify <想法>` | 需求 | `specs/NNN-slug/requirements.md` | 做什么、为谁、可度量成功标准、优先级 |
+| `/sdd:specify <想法> [--lite]` | 需求 | full=`requirements.md`；lite=`spec.md` | 做什么、为谁、可度量成功标准；lite 同文件含 How/Tasks/Quality |
 | `/sdd:clarify` | 消歧 | 回填 requirements | 把模糊点逼出来再设计 |
 | `/sdd:plan` | 设计 | `specs/NNN-slug/design.md` | 怎么做：架构/数据/接口/选型（遵循能力包约定） |
 | `/sdd:patterns [问题]` | 设计选型参考 | 推荐/详解 | 24 种设计模式的适用场景/解决的问题/慎用，辅助 plan 选型 |
 | `/sdd:principles [问题]` | 工程原则参考 | 推荐/详解 | 设计原则(SOLID…)/架构方法(Clean/DDD…)/12-Factor/高可用，辅助 plan 选型 |
-| `/sdd:tasks` | 拆解 | `specs/NNN-slug/tasks.md` | 原子任务 + Boundary + **Waves 并行计划** |
-| `/sdd:implement [next\|T1\|wave 2\|--workflow]` | 实现（**编排器**） | 代码 + 勾选任务 | 波次并发派子代理、隔离实现+注入能力包（implementer 报告前自跑门禁）；编排器按任务结构自选是否用确定性 Workflow，`--workflow`=强制走 |
-| `/sdd:verify` | 行为验证 | punch list | 按 AC 的 `Verify` 标签验（auto/sim 实跑；manual-HW 出人工证据清单） |
+| `/sdd:tasks` | 拆解 | `specs/NNN-slug/tasks.md` | 原子任务 + Boundary + Waves + `Risk/Review/Test policy` |
+| `/sdd:implement [next\|T1\|wave 2\|--workflow]` | 实现（**编排器**） | 代码 + evidence + 评审记录 + 任务状态 | 默认提示词编排；显式 flag 才用 Workflow；Git-visible diff 对账 Boundary；高风险/偏移/共享边界必审 |
+| `/sdd:verify` | 行为验证 | punch list + `COMPLETION.md` | 按 AC 实跑，保留命令/退出码/日志；关键行为缺持久测试即不通过 |
 | `/sdd:analyze` | 静态自检 | 一致性报告 | 需求↔设计↔任务↔代码 有无脱节（静态） |
 | `/sdd:status [mine]` | 项目仪表盘 | 派生只读总览 | 各 feature 归哪个终端、进度、门禁健康（多终端并发安全） |
-| `/sdd:worktree [start\|list\|finish\|abort]` | 并发隔离 | git worktree | 多终端/多 feature 物理隔离，互不 reset |
+| `/sdd:worktree [start\|list\|finish\|abort]` | Feature 生命周期 | git worktree | 非 trivial feature 的单一入口；finish 事务化执行门禁、合并、归档与安全清理 |
 | `/sdd:sync [main\|from <feature>] [--rebase]` | 跨终端同步 | 合并/变基 | 把别的 feature 已提交成果或最新 main 拉进当前 worktree |
 | `/sdd:version` | 查看版本 | 只读输出 | 报告当前 SDD 插件版本号、安装位置与本版要点 |
 
 **人工卡点**：所有命令都设了 `disable-model-invocation: true`，**只能你手动触发**——AI 不会自己跳阶段。每个阶段写完即停，等你审阅再敲下一个命令。
 
-附带**三个子代理**：
-- `implementer` — 隔离上下文里实现单个任务，严守 Boundary，报告前自跑门禁，只回结构化摘要（上下文隔离的执行单元）
+附带**五个子代理**：
+- `implementer` — 隔离上下文里实现单个任务，返回结构化门禁证据
+- `code-reviewer` — 独立读取真实 Git diff，按 P0–P3 审正确性/安全/兼容性/测试；非 PASS 不放行
 - `spec-reviewer` — 审 requirements（歧义、不可测、漏边界、范围蔓延）
 - `design-critic` — 审 design（过度/欠设计、漏失败模式、违宪、可追溯缺口）
+- `api-tester` — 基于 OpenAPI/设计契约/AC 做接口级测试与证据采集
 
-`implementer` 由 `/sdd:implement` 自动调度，你无需手动调用。`spec-reviewer` / `design-critic` 在 `/sdd:specify`、`/sdd:plan` 后让 Claude「用该子代理评审这份规格」。
+这些代理由对应阶段自动调度；通常不需要手动调用。
 
 ---
 
 ## 安装（三选一）
 
-本目录 `.sdd` 就是插件源。选一种方式部署：
+仓库同时是插件和 marketplace。推荐使用 Claude Code 的标准插件管理，不要把整个插件复制进 `~/.claude/skills`（那会丢失插件命名空间、hooks、agents 与升级能力）。CI 以 Claude Code `2.1.205` 严格模式验证。
 
-### 方式 A：全局安装（推荐，所有项目可用）
-把本插件放进用户级 skills 目录，下次启动 Claude Code 自动加载（无需 install 命令）：
+### 方式 A：从 GitHub marketplace 安装（推荐）
 
-```bash
-# 把 .sdd 的内容复制为全局插件 sdd
-cp -r "C:/Users/Administrator/Desktop/.sdd" "$HOME/.claude/skills/sdd"
-# 或用软链（改动即时生效，便于继续迭代框架本身）
-# Windows 需管理员: mklink /D "%USERPROFILE%\.claude\skills\sdd" "C:\Users\Administrator\Desktop\.sdd"
+在 Claude Code 中运行：
+
+```text
+/plugin marketplace add Ayunxx/.sdd
+/plugin install sdd@ayunxx-sdd
+/reload-plugins
 ```
 
-之后在**任何项目**里都能用 `/sdd:specify` 等命令。
+默认是用户级安装，所有项目可用 `/sdd:*`。详见 [Claude Code 官方插件安装文档](https://code.claude.com/docs/en/discover-plugins)。
 
-### 方式 B：启动时挂载（临时/试用）
+### 方式 B：本地开发/试用
+
 ```bash
-claude --plugin-dir "C:/Users/Administrator/Desktop/.sdd"
+git clone https://github.com/Ayunxx/.sdd.git Ayunxx-sdd
+claude --plugin-dir "/absolute/path/to/Ayunxx-sdd"
 ```
 
-### 方式 C：拷进单个项目
-把 `skills/` 和 `agents/` 复制到目标项目的 `.claude/` 下：
-```bash
-cp -r skills/* /path/to/project/.claude/skills/
-cp -r agents/* /path/to/project/.claude/agents/
-```
-（此方式命令名不带 `sdd:` 前缀，直接是 `/specify`、`/plan` …）
+`--plugin-dir` 直接加载当前工作副本，适合开发插件；改完可 `/reload-plugins`。
 
-> 安装后若命令没出现，运行 `/reload-plugins` 或重启 Claude Code。
+### 方式 C：项目级共享安装
+
+在项目根目录执行：
+
+```bash
+claude plugin marketplace add Ayunxx/.sdd --scope project
+claude plugin install sdd@ayunxx-sdd --scope project
+```
+
+这会把启用信息写入项目配置，团队成员信任仓库后可获得一致的插件来源。安装后若命令没出现，运行 `/reload-plugins` 或重启 Claude Code。
+
+需要把命令与 Workflow 运行时直接提交进仓库时，可在初始化时显式使用 `/sdd:init --vendor`。固定布局为 `.claude/skills/`、`.claude/agents/`、`.claude/sdd/workflows/` 与 `.claude/sdd/stacks/`；其中 `workflows/` 必须整体同步，不能只复制入口脚本。vendored 命令不带 `sdd:` 前缀，插件升级后需重新同步并评审差异。
 
 ---
 
@@ -117,9 +126,12 @@ cp -r agents/* /path/to/project/.claude/agents/
 ```
 1. cd 到你的新项目，启动 claude
 2. /sdd:init                    # 一次性：建 specs/ 结构 + 自动生成宪法 + 激活能力包 + 接上 CLAUDE.md 纪律
-3. /sdd:auto 用户能用邮箱密码注册登录   # 自动驾驶整条流程，到人工卡点停下引导你选
+3. /sdd:auto 用户能用邮箱密码注册登录   # 在主 worktree 创建/定位 Feature Worktree，然后给出绝对路径并停下
+4. cd ../<repo>--001-user-auth && claude
+5. /sdd:auto 用户能用邮箱密码注册登录   # 新 worktree 尚无规格，重输原想法；已有产物时才用 resume
+6. 回主 worktree：/sdd:worktree finish 001-user-auth
 ```
-> 想手动逐步掌控，就把第 3 步换成依次敲：`/sdd:specify → /sdd:clarify → /sdd:plan → /sdd:tasks → /sdd:implement → /sdd:verify`；随时 `/sdd:analyze`、`/sdd:status`。多功能并行用 `/sdd:worktree`。
+> 手动模式：先在主 worktree `/sdd:worktree start <slug>`，进入返回的新目录后依次运行 `/sdd:specify → /sdd:clarify → /sdd:plan → /sdd:tasks → /sdd:implement → /sdd:verify`。功能规格第一行起就与代码处在同一 feature 分支；主 worktree 只维护已提交的项目级 init/constitution/stack 基线、全局 `/sdd:status` 与串行 `finish`。
 
 **推荐**：把 `CLAUDE.snippet.md` 的内容粘进目标项目的 `CLAUDE.md`，强化"规格优先"纪律。
 
@@ -145,21 +157,23 @@ your-project/
 **🧊 上下文隔离（防偏移）** — `/sdd:implement` 不再自己一路写到底，而是当**编排器**：每个任务派一个 `implementer` 子代理，在**全新干净上下文**里只读该任务相关的 spec 切片来实现。长会话上下文退化导致的"越写越跑偏"被根除——每个任务都是"第一天的状态"。
 
 **⚡ 波次并发** — `/sdd:tasks` 给每个任务标 `Boundary`（独占文件领地）和 `Depends`，并算出 `Waves`：同一波内相互独立、Boundary 不重叠的任务，编排器**在一条消息里并行派多个子代理**同时干。理论最短轮数 = Wave 数，而非任务数。
-> 并发安全靠 Boundary 不重叠保证。若两任务必须改同一文件 → 让它们落到不同 Wave（串行），或（高级）给子代理加 `isolation: "worktree"` 各自独立工作树再合并；拿不准时编排器会自动降级为串行。
+> 并发安全靠 Boundary 与独占 Resources 不重叠保证。若两任务必须改同一文件/资源 → 让它们落到不同 Wave。任务级 `isolation: "worktree"` 只可用于默认提示词编排，且必须提前在 design/tasks 写明合并协议并获用户批准；确定性 Workflow 会以 `UNSUPPORTED_TASK_ISOLATION` 拒绝，绝不运行中临时切换。
 
-> **质量怎么保证（不设任务级独立验收子代理）** — 每个 `implementer` **报告 done 前必须自跑门禁**（format/lint/typecheck + 用一次性测试自验各 AC、验完即删，任一不过它就不报 done、写清 blocked 原因）；编排器只做 Boundary 守恒/依赖闸等确定性校验，不再派独立验收子代理逐任务复验。整体把关交给两道关口：**合并门**（`/sdd:worktree finish` 在主终端只编译改动模块 + 架构 fitness）拦"编译搞坏 main / 架构侵蚀"，功能级 **`/sdd:verify`** 按 AC 做一次性行为验证。缺陷靠"写的人自跑自验 + 上线前编译+fitness + 行为验收"兜，而非每步一个复验子代理。
+> **质量怎么保证** — implementer 必须返回 format/lint/typecheck/test 的结构化 evidence；显式 Workflow 模式再由独立 Git auditor 比较 Wave 前后快照，证据缺失、Git 可见的漏报/虚报/越界或 HEAD 改动会 fail closed。`Risk: high`、deviation、共享边界任务必须由全新 `code-reviewer` 独立审真实 diff，其余每 Wave 至少抽样 1 个；只有 `PASS` 才能勾任务。之后 `/sdd:verify` 逐 AC 实跑，`finish` 再跑改动模块编译 + fitness + 受影响持久测试。
 
 ## 多终端并发安全 / Git Worktree（v0.4）
 
 **问题**：一台电脑开多个终端跑 Claude，若都在**同一个目录**，它们共享同一个工作树和 HEAD——A 终端 `git checkout/reset/切分支` 会改写整个目录，**把 B 终端没提交的改动 reset 掉**。⚠️ 光"新建分支"救不了：同目录里工作树只有一个。
 
-**正解**：`git worktree` —— 从同一仓库长出**多个物理隔离的工作目录**，各挂各的分支、共享同一个 `.git`。一个 feature = 一个分支 = 一个 worktree 目录 = 一个终端，彼此互不影响。
+**正解**：`git worktree` —— 从同一仓库长出多个物理隔离目录，各挂各的分支、共享同一个 `.git`。v0.29 把它提升为生命周期硬不变量：**一个 feature = 一个 `sdd/NNN-slug` 分支 = 一个 worktree = 同一套规格、代码、任务状态与验证证据**。
+
+编号不是“先扫 `max+1` 再碰运气”：`start` 会用永久 `refs/sdd/feature-ids/NNN` 做 expected-absent CAS，先原子占住**纯 NNN**再建分支；因此两个终端同时创建 `005-a`/`005-b` 也只能一个拿到 005，显式复用已被别的 slug 占用的编号同样会被拒绝。
 
 ```
-/sdd:worktree start 001-user-auth     # 建分支 sdd/001-user-auth + 目录 ../<repo>--001-user-auth
-#   → 打开新终端 cd 到该目录启动 Claude，在那里跑完整 SDD 流程
+/sdd:worktree start user-auth         # 原子分配编号 + 建 sdd/001-user-auth + sibling worktree
+#   → 进入返回的绝对路径，在那里从 specify 跑到 verify
 /sdd:worktree list                    # 看所有 worktree 及对应 feature
-/sdd:worktree finish 001-user-auth    # 在主 worktree：对账+合并门+合并 → 自动删 worktree+分支+prune（合并成功才删）
+/sdd:worktree finish 001-user-auth    # 在主 worktree 串行：预检→证据门→合并→归档提交→最后清理
 /sdd:worktree abort 001-user-auth     # 不合并直接丢弃（确认后）
 ```
 
@@ -180,10 +194,11 @@ your-project/
 
 > 局部门禁（每个任务/功能写对）≠ 全局健康。后期"新功能与最初对不上、代码越来越冗余"是**跨功能、随时间累积**的全局问题，要靠下面三道全局防线：
 
-**① 合并门 = 编译改动模块 + 架构 fitness**（防"把 main 编译搞坏 / 架构侵蚀"）
-- `/sdd:worktree finish` 合并前只对**改动过的模块**跑编译（含类型检查）+ 架构 fitness，**编译通过 + fitness 全绿**才准合并。
-- **不跑测试**：本项目测试是一次性的（实现时验完即删、不留回归护栏），所以合并门不承担"跑老功能测试防改坏"的职责——行为是否达成 AC 交给 `/sdd:verify` 一次性验证。
-- **成本低**：只编译改动模块 + 静态 fitness，随改动范围自然伸缩、通常很快；编译慢可用 build-cache/并行（Maven `-T 1C`+`maven-build-cache-extension`、Gradle `--parallel --build-cache`、Nx/Turbo 缓存）加速编译本身。`/sdd:constitution` 会按构建工具自动探测填入。
+**① 合并门 = 改动模块编译 + 架构 fitness + 受影响持久测试**
+- `/sdd:worktree finish` 依据 `base...feature` diff 定位改动模块，三类门禁全部有实际命令、被测 SHA、退出码与摘要才准合并。
+- gate 前要求 feature 已包含当前 base；gate 期间若 base SHA 变化则停止并重新同步/验证，避免“在旧主干上全绿、合到新主干后出错”。
+- 测试采用 affected 范围：正常只跑改动模块及依赖范围；触及共享核心/公共契约或无法可靠收窄时扩大到对应完整套件。全量回归可放 PR/nightly，但不能把“不跑测试”当成本地默认。
+- 成本随改动范围伸缩；Maven/Gradle/Nx/Turbo/pytest 等可用缓存与并行。纯 docs/注释允许 `N/A(理由)`，不允许空证据。
 
 **② 架构适应度函数**（防架构侵蚀 + 治冗余）
 - 宪法 §3 声明、自动跑：依赖方向 / 禁止 import / 分层边界 / 复杂度上限 / **重复率阈值（jscpd）**。
@@ -193,7 +208,7 @@ your-project/
 - implementer 动手前**先 Grep 既有代码复用**、沿用既有命名与分层，绝不重复造轮子（隔离子代理最容易各写各的）。
 - 架构 fitness 的**重复率阈值（jscpd）**把"重复造轮子"钉成合并门硬指标；风格脱节由 formatter/linter 统一归一化。
 
-> 链路：写前复用发现（implementer） → 架构 fitness 重复率/分层阈值 → **合并门编译改动模块 + fitness 兜底全局**。三层一起，才压得住"项目越大越偏"。
+> 链路：写前复用发现 → 真实 diff Boundary 审计 → 独立风险 review → `/sdd:verify` AC 证据 → **合并门编译 + fitness + affected tests**。各层解决不同失效模式。
 
 ## 保持轻量 / Keeping it Lean（v0.7）
 
@@ -203,7 +218,7 @@ your-project/
 | 规模 | 走法 | 产物 |
 |------|------|------|
 | Trivial（单文件改/格式/明确小改） | **跳过 SDD**，直接对话做 | 无 |
-| Small（1–3 文件、单一明确） | `/sdd:specify --lite` → 直接 `/sdd:implement` | **单个 `spec.md`**（需求+设计+任务三合一） |
+| Small（1–3 文件、单一明确） | `/sdd:specify --lite` → `/sdd:implement` → scoped `/sdd:verify` | **单个 `spec.md`** + COMPLETION |
 | Normal/Large（多文件、有不确定性） | 完整流程 | requirements/design/tasks |
 
 > ⚠️ **分级省的是"规格阶段"，不是"合并门"**：lite 一样会 merge 进 main、一样能改坏别的功能，所以 **lite 照走合并门**（凡入 main 必走，不按大小豁免）——别怕慢，门成本随改动范围由 cache 自动伸缩，lite 只动一两个模块、门很便宜。Trivial 直接改不经 finish 故无门，但**若碰到共享/跨模块代码就该升级到 lite 走门**（"小"是文件数小，不是风险小）。
@@ -224,14 +239,14 @@ your-project/
 
 > 治一个真实的漏：实现/推进中决定"**这块现在不做、未来补**"，过去只在对话里答应一句、或顶多记进 `design §11 Deviations`——而 Deviations 随 feature 归档沉底，到该补的时候**直接漏掉**。
 
-- **专用台账**：项目级 `specs/BACKLOG.md`（`/sdd:init` 自动建）。跨 feature/epic 长存，**不放进任何 feature 目录**（否则随归档沉底）。
+- **专用台账**：项目级一项一文件 `specs/backlog/BL-<featureNNN>-<seq>.md`（`/sdd:init` 建目录）；`specs/BACKLOG.md` 只作索引/旧版兼容。跨 feature 添加不同文件，避免所有分支同时改一个列表尾部。
 - **延后 ≠ 偏移**：偏移（"做成了别的样子"）记 `Deviations`、对账后冻结；延后（"没做、要以后做"）进 BACKLOG、会被**主动回捞**。两者语义不同、落点不同。
 - **全链路防漏（写入 → 常驻 → 回捞 → 关闭）**：
-  - **写入**：`/sdd:implement`、`/sdd:auto` 遇延后决策必停下问，选"延后补齐"就落台账（`BL-NNN · 来源 · 内容 · 因 · 目标 · 记于`），绝不只在对话里答应。
+  - **写入**：`/sdd:implement`、`/sdd:auto` 对 Source/AC/Content/Reason/Target 的 canonical JSON 算稳定 decision digest，再用永久 backlog-id ref CAS 原子占号并新建 item；同 Source 的不同内容/原因不会误当中断恢复。
   - **常驻**：`/sdd:status` 永远显示"📌 待补齐"段——谁打开看板都看得见还欠什么，这是"绝不静默漏掉"的硬保证。
-  - **回捞**：`/sdd:specify` 起新功能时扫台账，把相关/目标指向"本次"的项**主动端到面前**问要不要纳入；纳入即标 `[~] 已排期`。
+  - **回捞**：`/sdd:specify` 起新功能时扫 items，把相关/Target 指向本次的项主动列出；纳入即把对应文件改为 `Status: scheduled` 并记录 `Scheduled-in`。
   - **关闭**：`/sdd:verify` / `worktree finish` 收尾时把本功能补齐的项标 `[x] 已补齐`，仍开着的再提醒一次。
-- **已在跑的老项目零手动**：机制**自愈**——读时缺文件视为空、不报错；首次延后时按骨架自建台账。想立刻有个空台账，再跑一次 `/sdd:init`（幂等、只补缺、不动现有文件）即可；历史已延后但没留痕的，手动往 `specs/BACKLOG.md` 补几条即可。
+- **老项目兼容**：旧 `specs/BACKLOG.md` 条目继续只读展示；新条目一律写 item 文件，可在实际处理旧条目时有意迁移。再跑 `/sdd:init` 只补 `specs/backlog/` 与索引说明，不覆盖旧内容。
 
 ## 文档自动评审 / Auto-Review & Alignment（v0.26）
 
@@ -247,30 +262,34 @@ your-project/
 
 **为什么需要**：风格一致性靠 LLM"自觉"保证不了——而本框架用**隔离子代理并行**实现，更放大了风格漂移风险（多个 fresh worker 习惯各异）。答案是**确定性工具统一强制**：formatter + linter + type-checker 在宪法里钉一次、每个任务自动跑。
 
-**三层防御（配置一次，全自动）：**
-1. **声明层** `constitution.md §3 Code Quality Gate`：钉死 `Format` / `Lint` / `Typecheck` / `Test` 的**真实命令** + 可维护性规则（命名、函数/复杂度上限、DRY 复用优先、分层方向、`.gitattributes` 统一换行）。
-2. **生成层** implementer + hook：每个隔离子代理**报告 done 前自跑 format+lint+typecheck+test**（任一不过就不报 done、写清 blocked），被同一套工具归一化；可选 `hooks.example.json` 每次编辑实时跑「格式化→lint→typecheck」。
-3. **校验层** 合并门 + analyze：`/sdd:worktree finish` 的**合并门**只对**改动过的模块**跑编译（含类型检查）、编译不过禁止合并 + 架构 fitness 查可维护性（重复/复杂度/分层）；**不跑测试**（测试一次性、验完即删）；`/sdd:analyze` 增加 Quality Gate 与 Maintainability 审计维度。
+**四层防御（配置一次，按风险自动伸缩）：**
+1. **声明层** `constitution.md §3/§4`：钉死真实门禁命令、架构规则、持久/临时测试边界与 affected suite 策略。
+2. **生成层** implementer + hook：每个隔离实现者跑 scoped format/lint/typecheck/test，并返回 `{gate, outcome, command, exitCode, summary, logPath?}`；`outcome` 不是 `pass/not_applicable`、缺证据或非零退出码都按失败处理。
+3. **独立审查层** Git auditor + `code-reviewer`：前者独立采集 Git 可见净变化并由代码对账 Boundary/漏报/虚报/HEAD，后者对高风险语义做对抗式审查；写代码的人不能自签完成。auditor 仍是 agent 介导，不是安全隔离层。
+4. **功能/合并层** `/sdd:verify` 逐 AC 实跑；`finish` 对改动模块编译 + fitness + 受影响持久测试，并把结果写回 COMPLETION 后再合并。
 
 > 可维护性（语义层）还靠：能力包的布局约定与红线、implementer"复用优先"、`/sdd:analyze` 的可维护性审计维度。也可 `/sdd:stack skill` 注入 Claude Code 自带的 `/code-review`、`/simplify`。
 
-## 确定性 Workflow 编排（编排器自选，无需 ultracode）
+## 可选动态 Workflow 编排（仅显式 opt-in）
 
-> 直面 review 那条短板：**"编排靠软约束"**——SDD 用提示词请编排器「并行派子代理、守 Boundary、按依赖排波」，但没人在代码层保证它真照做（波次能不能并、Boundary 越界拦不拦、依赖 blocked 传不传播，全凭 LLM 当下自觉）。**Claude Code Workflow** 把这层软编排升级成**确定性多代理编排**——波次并行调度 + Boundary/依赖三道闸**由代码强制执行**。
+普通 `/sdd:implement` 默认使用提示词编排，不会隐式拉起 Workflow。对多波次、大 fan-out 场景，用户可显式选择动态 Workflow，把 fan-out、波间屏障、依赖 blocked 传播和返回值校验放进可复跑脚本。
 
-**升级了什么（软 → 硬）：**
-- ⚡ **波次并行**：同 Wave 内 Boundary 不重叠的任务由**编排引擎**真并发 fan-out（含建波前 Boundary 两两交集校验、运行后 files⊆Boundary 守恒断言、依赖闸 blocked 传播——三道闸全在代码里）。
-- 🔁 **越界/依赖守恒**：implementer 若写到 Boundary 外，带反馈打回重报**≤2 次**仍越界即 `[!]`；依赖未满足的任务自动 blocked 传播、不向下游扩散——阈值写死在代码里，不再"看 LLM 心情"。
+**它确定性控制什么：**
+- ⚡ 同 Wave 的并发调度与完整任务图上的依赖传播；发现同 Wave Boundary 重叠会在启动 agent 前拒绝计划，要求拆到不同 Wave，避免共享快照下的覆盖/撤销误判。
+- 🛑 `agent()` 返回 `null`/throw 或 `parallel()` 缺项时立即终止当前 run，返回带 `stage/label/wave/task` 的 `runtimeFailures`，不继续空转或盲重试；结构化审计证据不合格则将该 Wave fail closed，并通过依赖传播阻止误放行。
+- ♻️ `completedTaskIds` + `runTaskIds` 支持 `next`/指定任务/指定 Wave 的部分运行；已完成任务不重跑，依赖上下文不丢失。
+- 🧾 `done` 必须具备 format/lint/typecheck/test 四类结构化 evidence；Git auditor 的必需命令证据缺失或不一致就 fail closed。
 
-**怎么用（编排器自动判断，零配置）：**
+**怎么用：**
 ```
-/sdd:implement                   # 编排器按任务结构自选：多波次/高并行→走 Workflow，少量串行→提示词编排（走前一句话告知）
-/sdd:implement --workflow        # 强制把本 feature 的 waves 交确定性引擎跑（脚本 workflows/sdd-implement.js）
+/sdd:implement                   # 默认：提示词编排，仍按 Boundary + Waves 并发普通 implementer
+/sdd:implement --workflow        # 显式：从干净 checkpoint 只跑下一未完成 Wave
 ```
-> ✅ **无需 ultracode、无需改宪法**——编排器自己判断该不该上 Workflow。**合规依据**：用户调用 `/sdd:implement`（一条本就多代理编排的命令）即 Claude Code 的显式 opt-in（"用户调用的 skill/命令的指令要求你调 Workflow"）。
-> ⚙️ **想一律禁用**：在项目 constitution §8 把 `禁用 Workflow` 设为 `是`，则永远走提示词编排。脚本 `workflows/sdd-implement.js` 可读可改。
+> ⚙️ Workflow agent 运行在 `acceptEdits` 并继承当前会话 tool allowlist；启动前要允许 implementer 所需工具和固定 Git audit helper 的只读 Bash。无交互运行无法中途授权，权限不足会成为 runtime failure。项目可在 constitution §8 一律禁用。已批准规格/计划或前序 Wave 必须先完成评审、证据回填和用户授权的 checkpoint commit，且工作树干净；每次调用只跑一个 Wave，返回后再 review→checkpoint→重跑下一 Wave，避免绕过评审屏障。
 > ⚠️ **务必用内置脚本（任务走 `args` 传入），别现场即兴另写工作流**：Workflow 校验器会文本扫描脚本，发现 `Date.now/Math.random/new Date/setTimeout` 字面量（哪怕在注释/prompt 里）就拒绝启动（报 determinism 错）。内置脚本已合规。要时间戳走 args 或工作流返回后再盖；要 ID 用 index 派生。
 > 试点只落 `implement`（fan-out 最受益）；`analyze --deep`（对抗式 fan-out）、`plan --candidates`（多方案 judge panel）标为**未来可选、暂未实现**，避免一次性铺开违背"轻量但稳"。
+
+> 诚实边界：Workflow script 本身无直接 FS/shell，但它派生的 agent 能读写和运行命令。Git snapshot 由固定、无 shell 拼接的 helper 采集并做结构校验，仍只能验证 tracked/untracked 的前后净变化，看不到 ignored 文件、`.git`/git-common-dir、FEATURE_ROOT 外路径，也看不到“写入后恢复”的瞬时副作用；模型仍负责转运 helper 的 JSON。需要强隔离时，必须使用路径级 PreToolUse hook、OS sandbox 或独立 feature worktree，不能把这里的 Git 对账当成安全边界；Workflow 明确拒绝 task-level `isolation: worktree`，需改用默认提示词编排并预先设计合并协议。
 
 ## 门禁自动提醒 / Stop Hook（v0.15，判断层）
 
@@ -301,7 +320,7 @@ cp "$CLAUDE_PLUGIN_ROOT/hooks/commit-msg" .git/hooks/commit-msg && chmod +x .git
 # 或软链，便于跟随框架更新：
 ln -sf "$CLAUDE_PLUGIN_ROOT/hooks/commit-msg" .git/hooks/commit-msg
 ```
-> 全局安装时 `$CLAUDE_PLUGIN_ROOT` 即 `~/.claude/skills/sdd`（方式 A 的安装路径）。Windows 用 git-bash 跑同样命令即可。本 hook 为 Node.js（shebang `#!/usr/bin/env node`），需保证 `node` 在 PATH 上，无外部依赖、无需改动。
+> Marketplace 插件位于 Claude Code 管理的版本化缓存中，不要硬编码缓存路径。在已加载本插件的 Claude Code 会话内使用 `$CLAUDE_PLUGIN_ROOT`；在普通外部终端则把它替换为本地 checkout/plugin 根的绝对路径。Windows 可用 Git Bash 执行。本 hook 依赖 PATH 中的 Node.js，无外部包。
 
 **安全设计（fail-open）：** merge / revert / fixup! / squash! 自动放行；空消息交给 git 处理；脚本自身异常一律放行——门禁绝不无故卡住正常提交。**关闭：** 删 `.git/hooks/commit-msg`，或单次 `git commit --no-verify`。
 
@@ -310,11 +329,11 @@ ln -sf "$CLAUDE_PLUGIN_ROOT/hooks/commit-msg" .git/hooks/commit-msg
 多终端并发跑任务时，想一眼看清"**每个终端此刻在做哪个 feature、第几个任务、忙还是闲、还活着吗**"——靠 [hooks/status_report.js](hooks/status_report.js) 自动上报，[/sdd:status](skills/status/SKILL.md) 聚合成实时看板。**随插件自动激活、零接入**。
 
 - **自动上报（hook，零 LLM）**：`SessionStart`/`UserPromptSubmit`/`Stop` 管回合边界，`PostToolUse` 管回合中途刷新（修长回合/编排器盲区）；非 `sdd/*` 分支立刻空跑退出。
-- **长 workflow / 子代理期间靠"子代理自己续心跳"**：插件 hook **会在子代理上下文里运行**（官方文档确认，输入带子代理自己的 cwd）。所以 workflow/子代理在本 worktree 调工具时，它们的 `PostToolUse` 会拿同一个 `sdd/NNN` 分支刷新**同一个心跳文件**——心跳不停更。
+- **长 workflow / 子代理期间靠"子代理自己续心跳"**：插件 hook **会在子代理上下文里运行**（官方文档确认，输入带子代理自己的 cwd/agent 身份）。所以 workflow/子代理在本 worktree 调工具时，它们的 `PostToolUse` 会刷新自己的会话心跳；父会话的 `delegating` 记录不会被覆盖。
 - **双层保险**：① 子代理在本 worktree 干活 → 自动刷成 `working`（主路径）；② 万一不刷新（worktree 隔离的 agent 在别的分支/detached，或 workflow runtime 不跑插件 hook）→ `PostToolUse` 在 workflow 启动那刻打的 `delegating` 标兜底，`/sdd:status` 显示"🟢 委派中（自 HH:MM）"且**不按 5 分钟判死**，`Stop` 后自动恢复。
   > 诚实边界：Task/Agent 子代理触发 hook 是文档确认的；Workflow 工具派生的 agent 是否触发文档未明说（极可能）。但两种情况设计都不崩——要 100% 确认，在真实会话跑个含 Bash 调用的小 workflow、看心跳文件时间戳有没有在 workflow 期间走动即可。
-- **一终端一文件、零写竞态**：各终端只写自己的 `<git-common-dir>/sdd-runtime/<branch>.json`（所有 worktree 共享一个 `.git`，天然互相可见）。**存运行时、不进版本库**——不造合并冲突、不污染历史。
-- **读层只读**：`/sdd:status` 只读心跳文件、绝不写，故仍多终端并发安全。终端关闭不主动清文件，靠 `lastActivity` 时间戳判**过期**（>5 分钟标"可能已关闭"）。
+- **一会话/agent 一文件、原子发布**：文件名为 `<branch>-<session-key>.json`，key 由 session/transcript + agent 身份稳定派生；同分支多个终端不会互相覆盖，单文件通过 temp+rename 发布，读者不会看到半截 JSON。所有 worktree 共享一个 `.git`，但运行时文件不进版本库。
+- **读层只读**：`/sdd:status` 按 branch 聚合全部 session，不覆盖同分支的并发终端；摘要显示最新会话与活跃数，必要时展开每个 session。终端关闭不主动清文件，靠 `lastActivity` 时间戳判**过期**（>5 分钟标"可能已关闭"）。
 - **定位**：尽力而为的**可观测性**，不是协调/加锁——协调仍靠 git 分支占号 + Boundary；派生事实（worktree/specs/git）永远权威，心跳与之冲突以派生为准。
 - **关闭**：删 `hooks/hooks.json` 里的 `SessionStart`/`UserPromptSubmit` 段与 `Stop` 段中的 status_report 那条。
 
@@ -348,6 +367,19 @@ ln -sf "$CLAUDE_PLUGIN_ROOT/hooks/commit-msg" .git/hooks/commit-msg
 - **为什么禁用模型自动调用**：SDD 的价值在"人在每个阶段把关"。手动触发 = 天然卡点。
 - **轻量如何与机制兼得**：你仍只敲 `/sdd:implement` 一条命令，并发/隔离全在底层自动发生——表面更省事，过程更稳，返工更少。简单任务（单文件改 bug）可跳过 SDD，直接对话即可。
 
+## 仓库自身质量检查
+
+```bash
+npm test                             # core/workflow/hook runtime 的 node:test 回归
+claude plugin validate . --strict    # plugin + marketplace + skills/agents/hooks schema
+```
+
+GitHub Actions 会并行执行 JS 语法、JSON 解析、`npm test` 与固定版本的 Claude Code 插件校验。发布前还应运行 `git diff --check`，并在真实 Claude Code 会话做一个最小 smoke test（加载插件、创建 feature worktree、运行一个含 Workflow 的小任务）。
+
 ## 迭代这套框架本身
 
-`.sdd` 是源，改完命令/代理后：用软链安装会即时生效（文本类改动）；新增/改动 agents 或 hooks 需 `/reload-plugins` 或重启。版本号在 `.claude-plugin/plugin.json`。
+本仓库是源。开发时用 `claude --plugin-dir <仓库绝对路径>` 加载工作副本；修改 skills/agents/hooks 后运行 `/reload-plugins`（必要时重启）。发布时同步更新 `.claude-plugin/plugin.json` 与 `package.json` 版本，并让 CI 全绿。
+
+## License
+
+[MIT](LICENSE)
