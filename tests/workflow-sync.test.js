@@ -50,7 +50,7 @@ function workflowTask(id, overrides = {}) {
     depends: [],
     doneWhen: `${id} behavior is verified`,
     risk: 'low',
-    review: 'wave-sample',
+    review: 'required',
     testPolicy: 'persistent',
     resources: [],
     gateIsolation: 'scoped',
@@ -58,16 +58,21 @@ function workflowTask(id, overrides = {}) {
   }
 }
 
-function validImplementation(files = []) {
+function validImplementer(files = []) {
+  return { status: 'implemented', files, deviation: '', notes: '' }
+}
+
+function validVerifier(overrides = {}) {
   return {
-    status: 'done',
-    files,
+    status: 'pass',
     quality: { format: 'pass', lint: 'pass', typecheck: 'pass', test: 'pass' },
     evidence: ['format', 'lint', 'typecheck', 'test'].map(gate => ({
       gate, outcome: 'pass', command: `run-${gate}`, exitCode: 0, summary: 'passed',
     })),
-    deviation: '',
+    acceptance: [{ criterion: 'Done when', outcome: 'pass', evidence: 'behavior test passed' }],
+    worktreeUnchanged: true,
     notes: '',
+    ...overrides,
   }
 }
 
@@ -216,8 +221,8 @@ test('agent null is a structured runtime failure and stops before after-audit or
     label: 'impl:T1',
     task: 'T1',
     wave: 'W1',
-    code: 'AGENT_NULL',
-    message: 'Workflow agent impl:T1 returned null; inspect the Workflow journal for a safety block, skipped dispatch, or terminal API error.',
+    code: 'AGENT_EMPTY_RESULT',
+    message: 'Workflow agent impl:T1 returned an empty result; inspect the Workflow journal for a safety block, skipped dispatch, or terminal API error.',
   })
   assert.equal(result.taskEvidence.find(task => task.id === 'T1').state, 'blocked')
   assert.equal(result.taskEvidence.find(task => task.id === 'T2').state, 'not_selected')
@@ -238,6 +243,62 @@ test('agent rejection preserves its task context and fails fast without retry', 
   assert.equal(result.runtimeFailures[0].stage, 'implement')
   assert.equal(result.runtimeFailures[0].task, 'T1')
   assert.match(result.runtimeFailures[0].message, /dispatch API unavailable/)
+})
+
+test('empty-string dispatch result fails closed instead of entering an idle loop', async () => {
+  const run = await compileWorkflow()
+  let implementerCalls = 0
+  const result = await run(twoWaveArgs(), async (_prompt, options) => {
+    if (options.label.startsWith('git-audit:')) return validSnapshot()
+    implementerCalls += 1
+    return '   '
+  }, runThunks, () => {}, () => {})
+
+  assert.equal(implementerCalls, 1)
+  assert.equal(result.runtimeFailures[0].code, 'AGENT_EMPTY_RESULT')
+  assert.equal(result.taskEvidence.find(item => item.id === 'T1').state, 'blocked')
+})
+
+test('missing acceptance evidence cannot pass even when all quality gates are green', async () => {
+  const run = await compileWorkflow()
+  let implementerCalls = 0
+  let verifierCalls = 0
+  const changed = validSnapshot([{ path: 'src/a.js', state: '??', fingerprint: 'e'.repeat(40) }])
+  const result = await run(twoWaveArgs(), async (_prompt, options) => {
+    if (options.label === 'git-audit:W1:before') return validSnapshot()
+    if (options.label.startsWith('git-audit:W1:')) return changed
+    if (options.label === 'impl:T1') {
+      implementerCalls += 1
+      return validImplementer(['src/a.js'])
+    }
+    verifierCalls += 1
+    return validVerifier({ acceptance: [], status: 'fail' })
+  }, runThunks, () => {}, () => {})
+
+  assert.equal(implementerCalls, 1)
+  assert.equal(verifierCalls, 1, 'verification runs in a separate fresh agent call')
+  assert.deepEqual(result.runtimeFailures, [])
+  const task = result.taskEvidence.find(item => item.id === 'T1')
+  assert.equal(task.state, 'blocked')
+  assert.equal(task.attempts, 1)
+  assert.match(task.reason, /独立核对未通过.*验收证据不合格/)
+})
+
+test('verifier worktree side effects block the whole Wave even when it reports pass', async () => {
+  const run = await compileWorkflow()
+  const implemented = validSnapshot([{ path: 'src/a.js', state: '??', fingerprint: '1'.repeat(40) }])
+  const mutated = validSnapshot([{ path: 'src/a.js', state: '??', fingerprint: '2'.repeat(40) }])
+  const result = await run(twoWaveArgs(), async (_prompt, options) => {
+    if (options.label === 'git-audit:W1:before') return validSnapshot()
+    if (options.label === 'git-audit:W1:implemented') return implemented
+    if (options.label === 'git-audit:W1:verified') return mutated
+    if (options.label === 'impl:T1') return validImplementer(['src/a.js'])
+    return validVerifier()
+  }, runThunks, () => {}, () => {})
+
+  const task = result.taskEvidence.find(item => item.id === 'T1')
+  assert.equal(task.state, 'blocked')
+  assert.match(task.reason, /Verifier 只读隔离失败.*Verifier changed worktree/)
 })
 
 test('parallel null fails fast without invoking task thunks', async () => {
@@ -299,13 +360,14 @@ test('partial run accepts a completed dependency and does not rerun it', async (
   const result = await run(args, async (_prompt, options) => {
     labels.push(options.label)
     if (options.label === 'git-audit:W2:before') return validSnapshot()
-    if (options.label === 'git-audit:W2:after') {
+    if (options.label === 'git-audit:W2:implemented' || options.label === 'git-audit:W2:verified') {
       return validSnapshot([{ path: 'src/b.js', state: '??', fingerprint: 'b'.repeat(40) }])
     }
-    return validImplementation(['src/b.js'])
+    if (options.label === 'impl:T2') return validImplementer(['src/b.js'])
+    return validVerifier()
   }, runThunks, title => phases.push(title), () => {})
 
-  assert.deepEqual(labels, ['git-audit:W2:before', 'impl:T2', 'git-audit:W2:after'])
+  assert.deepEqual(labels, ['git-audit:W2:before', 'impl:T2', 'git-audit:W2:implemented', 'verify:T2', 'git-audit:W2:verified'])
   assert.deepEqual(phases, ['Wave W2'])
   assert.deepEqual(result.runtimeFailures, [])
   assert.equal(result.taskEvidence.find(task => task.id === 'T1').state, 'done')
@@ -320,13 +382,14 @@ test('default Workflow invocation executes only the first incomplete Wave', asyn
   const result = await run(twoWaveArgs(), async (_prompt, options) => {
     labels.push(options.label)
     if (options.label === 'git-audit:W1:before') return validSnapshot()
-    if (options.label === 'git-audit:W1:after') {
+    if (options.label === 'git-audit:W1:implemented' || options.label === 'git-audit:W1:verified') {
       return validSnapshot([{ path: 'src/a.js', state: '??', fingerprint: 'c'.repeat(40) }])
     }
-    return validImplementation(['src/a.js'])
+    if (options.label === 'impl:T1') return validImplementer(['src/a.js'])
+    return validVerifier()
   }, runThunks, () => {}, () => {})
 
-  assert.deepEqual(labels, ['git-audit:W1:before', 'impl:T1', 'git-audit:W1:after'])
+  assert.deepEqual(labels, ['git-audit:W1:before', 'impl:T1', 'git-audit:W1:implemented', 'verify:T1', 'git-audit:W1:verified'])
   assert.equal(result.taskEvidence.find(task => task.id === 'T1').state, 'done')
   assert.equal(result.taskEvidence.find(task => task.id === 'T2').state, 'not_selected')
 })
@@ -364,7 +427,7 @@ test('partial run blocks a selected task whose unfinished dependency was not sel
   const args = { ...twoWaveArgs(), runTaskIds: ['T2'], completedTaskIds: [] }
   const result = await run(args, async () => {
     agentCalls += 1
-    return validImplementation()
+    return validImplementer()
   }, runThunks, () => {}, () => {})
 
   assert.equal(agentCalls, 0)

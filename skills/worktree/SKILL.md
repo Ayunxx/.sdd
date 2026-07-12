@@ -93,7 +93,7 @@ $ARGUMENTS
 
 #### 2. Feature 完整性与只读对账
 
-从 `git worktree list --porcelain` 精确定位 `sdd/NNN-slug` 和 `FEATURE_ROOT`，确认规格、实现、全量任务状态、required review/Wave 抽样证据与 `COMPLETION.md` 完整，AC 无 🔴/待补签项，且 `git -C "$FEATURE_ROOT" status --porcelain` 为空。核对 requirements/design/tasks（lite 为 spec）、代码和 COMPLETION，确认冻结规格等于实际所建；发现 split-brain 或需回填时停止 finish，回 Feature Worktree 修正并提交。唯一例外是已报告的 `GATE_PUBLISHED_UNSYNCED`：持锁后先按 §6.1 恢复，恢复全绿前不得进入本节其余步骤。
+从 `git worktree list --porcelain` 精确定位 `sdd/NNN-slug` 和 `FEATURE_ROOT`，确认规格、实现、全量任务状态、每任务 fresh Implementer/Verifier/Reviewer 三角色证据与 `COMPLETION.md` 完整，AC 无 🔴/待补签项，且 `git -C "$FEATURE_ROOT" status --porcelain` 为空。核对 requirements/design/tasks（lite 为 spec）、代码和 COMPLETION，确认冻结规格等于实际所建；发现 split-brain 或需回填时停止 finish，回 Feature Worktree 修正并提交。唯一例外是已报告的 `GATE_PUBLISHED_UNSYNCED`：持锁后先按 §6.1 恢复，恢复全绿前不得进入本节其余步骤。
 
 执行 `git merge-base --is-ancestor "$BASE_SHA" "refs/heads/sdd/<NNN-slug>"`。失败说明 feature 未包含固定 base：先在 Feature Worktree `/sdd:sync main`，解决冲突、重跑受影响 verify 并提交；不能沿用旧 base 的绿灯。
 

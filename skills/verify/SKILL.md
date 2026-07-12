@@ -10,6 +10,7 @@ allowed-tools: Read, Write, Edit, Glob, Grep, Bash
 你的任务：把一个**已实现完**的功能，拿真实运行结果对照它的验收标准（AC），逐条判定通过/失败，产出一张**问题清单（punch list）**。这是 GSD 式的独立 Verify 阶段——防止"代码写完了但其实没满足需求"的偏移在上线后才暴露。
 
 > 与 `/sdd:analyze` 的分工：`analyze` 查**静态**的文档↔代码一致性（谁没对上）；`verify` 查**动态**的行为是否真的满足 AC（跑起来对不对）。
+> 与任务级 Verifier 的分工：Verifier 是 `/sdd:implement` 内每任务一个 fresh context 的只核对角色；本命令是所有任务完成后的功能级独立复验，同样不得复用 Implementer/Reviewer 上下文，也不修改业务代码。
 
 ## 用户输入
 $ARGUMENTS
@@ -29,8 +30,9 @@ $ARGUMENTS
 2. **建立验收矩阵**：把每条 AC 列出来，准备逐条验证。
 
 2.5 **任务状态兜底对账（修 Bug：状态没更新）**：逐条核对 `TASK_STATE_FILE` 的勾选 vs 任务**实际是否完成**（看代码/测试是否真在）——
-   - 实际代码存在但还是 `[ ]`/`[~]` → 先核对该任务的门禁 evidence、适用的 `code-reviewer PASS` 与所在 Wave 抽样记录；**证据齐全才可**改成 `[x]` 并更新 `Progress`。缺证据不能靠“看起来做完了”绕过实现门，保留 `[~]` 并列入问题清单。
-   - 标了 `[x]` 但实现、门禁证据、required review 或持久测试缺失/失败 → 改回 `[~]`（明确失败则 `[!]`）并在报告里标红。
+   - 实际代码存在但还是 `[ ]`/`[~]` → 核对 fresh Implementer files、fresh Verifier acceptance/gates/只读快照和 fresh Reviewer PASS；三份工件齐全才可改成 `[x]`。
+   - 标了 `[x]` 但实现、验收证据、门禁证据、required review 或持久测试缺失/失败 → 改回 `[~]`（明确失败则 `[!]`）并在报告里标红。
+   - 若测试通过依赖 `skip`/`only`、恒真断言、过宽 mock、禁用类型/lint、降低覆盖率阈值或删除既有回归，判为 🔴 证据失真并退回 `/sdd:implement`，不能按绿处理。
    - 这一步只修复跟踪状态，不重新定义完成标准；`/sdd:verify` 不能替 `/sdd:implement` 补签独立评审。
 
 3. **按 AC 的 `Verify:` 标签路由验证**（服务端/前端/嵌入式验法不同）：
@@ -73,7 +75,7 @@ $ARGUMENTS
 - **AC:** a / b 通过 · 待人工背书(manual-HW): [AC?...] · 未达成: [AC?...]
 - **Success Criteria:** [逐条 达成/未达成 + 实测值]
 - **质量门禁:** format/lint/typecheck/test 的实际命令、退出码与日志摘要（或标未过项）
-- **独立评审:** required review 与 Wave 抽样的 reviewer verdict / 基线 / 修复轮次 / residual risk
+- **独立评审:** 每任务 fresh Reviewer verdict / 基线 / 修复轮次 / residual risk
 
 ## Quality Evidence / 质量证据
 | Scope | Gate / AC | Command or method | Exit | Summary / Log |

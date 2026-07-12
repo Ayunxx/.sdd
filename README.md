@@ -9,8 +9,8 @@
 | 维度 | 提供什么 |
 |------|---------|
 | **全流程驱动** | `/sdd:init` 一键初始化项目 · `/sdd:auto` 自动驾驶（人工卡点引导你选）或手动逐步：立宪→规格→设计→拆解→实现→验证→收尾 |
-| **核心引擎**（防偏移·并发） | 🧊 实现期每任务**隔离 implementer** · ⚡ Boundary+Waves 波次并发 · 独立 Git auditor 对 Git 可见净变化做 fail-closed 对账 |
-| **质量 & 防全局偏移** | format/lint/typecheck/test 的**命令+退出码证据** · 高风险任务独立 `code-reviewer` · 关键回归测试持久化 · 合并门执行改动模块编译 + 架构 fitness + **受影响测试** · `/sdd:verify` 逐 AC 实跑 |
+| **核心引擎**（防偏移·并发） | 🧊 每任务 fresh Implementer→Verifier→Reviewer 三上下文隔离 · ⚡ Boundary+Waves 并发 · Git auditor 对实现/核对前后快照 fail closed |
+| **质量 & 防全局偏移** | Verifier 提交 format/lint/typecheck/test 的命令+退出码证据 · Reviewer 独立审查 · 关键回归持久化 · 合并门 + `/sdd:verify` |
 | **并发协作** | **一 feature 一分支一 worktree**，规格/代码/进度/证据同源 · `/sdd:sync` 跨 feature 共享 · `/sdd:status` 派生式仪表盘 + 实时心跳 |
 | **领域覆盖** | 能力包注入：全栈/移动/小程序/H5/PC/服务端/数据库/嵌入 + 任意 Claude Code skill |
 | **知识辅助** | 24 种设计模式 + 工程原则(SOLID/Clean/DDD/12-Factor/高可用) 辅助 design 选型 |
@@ -32,7 +32,7 @@
 2. **真相锚定，视图派生**：状态不存一份共享文件——**一功能一份**存各自目录（归属由 git worktree 唯一确定），**全局仪表盘实时派生、零落盘** → 多终端并发零冲突零串行。
 3. **确定性工具 > AI 自觉**：风格/架构一致性靠 formatter/linter/typecheck/fitness；Boundary 用静态范围、独立 Git 快照和 reviewer 多层对账，不只采信 implementer 的文件自报。Git auditor 是 agent 介导的证据源，不冒充文件系统沙箱。
 4. **局部隔离，全局设门**：任务级隔离实现 + 风险分层独立 code review；功能级合并门运行改动模块编译、架构 fitness 与受影响回归测试，`/sdd:verify` 再逐条验证 AC。
-5. **证据先于结论**：`passed` 文本不算门禁。实际命令、退出码、输出摘要/日志、reviewer verdict 和被测 commit 能对应起来，才算完成。
+5. **三角色隔离、证据先于结论**：每任务使用三个 fresh context——Implementer 只修改、Verifier 只核对、Reviewer 只审查。三者只传结构化工件，不共享聊天上下文；Done when/AC acceptance、命令/退出码/日志、Reviewer verdict 和被测 commit 对应起来才算完成。
 6. **克制优先**：能跳过就跳过（trivial 不上 SDD）、小事走 `--lite`、完成即冻结归档、YAGNI 不为用而堆模式/架构——文档量随"在建功能数"走，不随项目历史无限涨。
 
 ---
@@ -71,8 +71,9 @@
 **人工卡点**：所有命令都设了 `disable-model-invocation: true`，**只能你手动触发**——AI 不会自己跳阶段。每个阶段写完即停，等你审阅再敲下一个命令。
 
 附带**五个子代理**：
-- `implementer` — 隔离上下文里实现单个任务，返回结构化门禁证据
-- `code-reviewer` — 独立读取真实 Git diff，按 P0–P3 审正确性/安全/兼容性/测试；非 PASS 不放行
+- `implementer` — fresh context，只修改单个任务的实现与测试，不执行完成门禁
+- `verifier` — fresh context，只运行非写入门禁并提交 Done when/AC 证据，不修改代码
+- `code-reviewer` — fresh context，只读规格、真实 diff 与 Verifier 工件，审查实现质量
 - `spec-reviewer` — 审 requirements（歧义、不可测、漏边界、范围蔓延）
 - `design-critic` — 审 design（过度/欠设计、漏失败模式、违宪、可追溯缺口）
 - `api-tester` — 基于 OpenAPI/设计契约/AC 做接口级测试与证据采集
@@ -154,12 +155,12 @@ your-project/
 
 ## 两大机制如何落地
 
-**🧊 上下文隔离（防偏移）** — `/sdd:implement` 不再自己一路写到底，而是当**编排器**：每个任务派一个 `implementer` 子代理，在**全新干净上下文**里只读该任务相关的 spec 切片来实现。长会话上下文退化导致的"越写越跑偏"被根除——每个任务都是"第一天的状态"。
+**🧊 三角色上下文隔离（防偏移）** — `/sdd:implement` 为每个任务依次派 fresh Implementer、fresh Verifier、fresh Reviewer。三者只通过结构化 files/evidence/findings 交接，不共享会话历史；写代码的人不核对自己，跑门禁的人不审自己，审代码的人不继承前两者的判断。
 
 **⚡ 波次并发** — `/sdd:tasks` 给每个任务标 `Boundary`（独占文件领地）和 `Depends`，并算出 `Waves`：同一波内相互独立、Boundary 不重叠的任务，编排器**在一条消息里并行派多个子代理**同时干。理论最短轮数 = Wave 数，而非任务数。
 > 并发安全靠 Boundary 与独占 Resources 不重叠保证。若两任务必须改同一文件/资源 → 让它们落到不同 Wave。任务级 `isolation: "worktree"` 只可用于默认提示词编排，且必须提前在 design/tasks 写明合并协议并获用户批准；确定性 Workflow 会以 `UNSUPPORTED_TASK_ISOLATION` 拒绝，绝不运行中临时切换。
 
-> **质量怎么保证** — implementer 必须返回 format/lint/typecheck/test 的结构化 evidence；显式 Workflow 模式再由独立 Git auditor 比较 Wave 前后快照，证据缺失、Git 可见的漏报/虚报/越界或 HEAD 改动会 fail closed。`Risk: high`、deviation、共享边界任务必须由全新 `code-reviewer` 独立审真实 diff，其余每 Wave 至少抽样 1 个；只有 `PASS` 才能勾任务。之后 `/sdd:verify` 逐 AC 实跑，`finish` 再跑改动模块编译 + fitness + 受影响持久测试。
+> **质量怎么保证** — Implementer 只返回实际 changed files；随后 fresh Verifier 运行非写入 format-check/lint/typecheck/test，并返回 Done when/AC `acceptance[]` 与结构化 evidence；再由 fresh `code-reviewer` 审真实 diff、规格和 Verifier 工件。显式 Workflow 在 Implementer 后、Verifier 后各取 Git 快照，Verifier 产生任何写入都会让整 Wave fail closed。Reviewer 还检查 skip/only、恒真断言、过宽 mock、禁用检查、覆盖率下降和回归删除。之后 `/sdd:verify` 功能级复验，`finish` 再跑合并门。
 
 ## 多终端并发安全 / Git Worktree（v0.4）
 
@@ -262,11 +263,12 @@ your-project/
 
 **为什么需要**：风格一致性靠 LLM"自觉"保证不了——而本框架用**隔离子代理并行**实现，更放大了风格漂移风险（多个 fresh worker 习惯各异）。答案是**确定性工具统一强制**：formatter + linter + type-checker 在宪法里钉一次、每个任务自动跑。
 
-**四层防御（配置一次，按风险自动伸缩）：**
+**五层防御（配置一次，按风险自动伸缩）：**
 1. **声明层** `constitution.md §3/§4`：钉死真实门禁命令、架构规则、持久/临时测试边界与 affected suite 策略。
-2. **生成层** implementer + hook：每个隔离实现者跑 scoped format/lint/typecheck/test，并返回 `{gate, outcome, command, exitCode, summary, logPath?}`；`outcome` 不是 `pass/not_applicable`、缺证据或非零退出码都按失败处理。
-3. **独立审查层** Git auditor + `code-reviewer`：前者独立采集 Git 可见净变化并由代码对账 Boundary/漏报/虚报/HEAD，后者对高风险语义做对抗式审查；写代码的人不能自签完成。auditor 仍是 agent 介导，不是安全隔离层。
-4. **功能/合并层** `/sdd:verify` 逐 AC 实跑；`finish` 对改动模块编译 + fitness + 受影响持久测试，并把结果写回 COMPLETION 后再合并。
+2. **实现层** fresh Implementer：只修改 Boundary 内实现与测试，只返回 changed files，不执行完成门禁。
+3. **核对层** fresh Verifier + Git auditor：Verifier 运行非写入门禁并返回 `{gate, outcome, command, exitCode, summary}` 与 acceptance；auditor 比较实现后/核对后快照，核对者产生写入即失败。
+4. **独立审查层** fresh `code-reviewer`：只读真实 diff、规格与 Verifier 工件，对正确性、安全、兼容性和测试充分性做对抗审查；不复用前两者上下文。
+5. **功能/合并层** `/sdd:verify` 逐 AC 实跑；`finish` 对改动模块编译 + fitness + 受影响持久测试，并把结果写回 COMPLETION 后再合并。
 
 > 可维护性（语义层）还靠：能力包的布局约定与红线、implementer"复用优先"、`/sdd:analyze` 的可维护性审计维度。也可 `/sdd:stack skill` 注入 Claude Code 自带的 `/code-review`、`/simplify`。
 
@@ -276,16 +278,16 @@ your-project/
 
 **它确定性控制什么：**
 - ⚡ 同 Wave 的并发调度与完整任务图上的依赖传播；发现同 Wave Boundary 重叠会在启动 agent 前拒绝计划，要求拆到不同 Wave，避免共享快照下的覆盖/撤销误判。
-- 🛑 `agent()` 返回 `null`/throw 或 `parallel()` 缺项时立即终止当前 run，返回带 `stage/label/wave/task` 的 `runtimeFailures`，不继续空转或盲重试；结构化审计证据不合格则将该 Wave fail closed，并通过依赖传播阻止误放行。
+- 🛑 `agent()` 返回空结果/`null`/throw 或 `parallel()` 缺项时立即终止当前 run，返回带 `stage/label/wave/task` 的 `runtimeFailures`，不合成成功、不继续空转；只有 journal 证明未启动且 Git 快照仍等于 baseline 时才允许用户显式有界重试，最多 2 次，第三次 blocked。
 - ♻️ `completedTaskIds` + `runTaskIds` 支持 `next`/指定任务/指定 Wave 的部分运行；已完成任务不重跑，依赖上下文不丢失。
-- 🧾 `done` 必须具备 format/lint/typecheck/test 四类结构化 evidence；Git auditor 的必需命令证据缺失或不一致就 fail closed。
+- 🧾 Workflow 顺序固定为 fresh Implementer → 实现后快照 → fresh Verifier → 只读副作用快照 → fresh Reviewer。Implementer 不能提交 evidence，Verifier 不能改代码，Reviewer 不能替前两者补做；三份工件齐全后才进入 passed。
 
 **怎么用：**
 ```
 /sdd:implement                   # 默认：提示词编排，仍按 Boundary + Waves 并发普通 implementer
 /sdd:implement --workflow        # 显式：从干净 checkpoint 只跑下一未完成 Wave
 ```
-> ⚙️ Workflow agent 运行在 `acceptEdits` 并继承当前会话 tool allowlist；启动前要允许 implementer 所需工具和固定 Git audit helper 的只读 Bash。无交互运行无法中途授权，权限不足会成为 runtime failure。项目可在 constitution §8 一律禁用。已批准规格/计划或前序 Wave 必须先完成评审、证据回填和用户授权的 checkpoint commit，且工作树干净；每次调用只跑一个 Wave，返回后再 review→checkpoint→重跑下一 Wave，避免绕过评审屏障。
+> ⚙️ Workflow agent 继承当前会话 tool allowlist；启动前要允许 Implementer 编辑能力、Verifier 非写入 Bash 和 Git auditor 固定只读 helper。每次调用只跑一个 Wave：Implementer→快照→Verifier→快照，返回后再用 fresh Reviewer→checkpoint，避免角色上下文混用或绕过评审屏障。
 > ⚠️ **务必用内置脚本（任务走 `args` 传入），别现场即兴另写工作流**：Workflow 校验器会文本扫描脚本，发现 `Date.now/Math.random/new Date/setTimeout` 字面量（哪怕在注释/prompt 里）就拒绝启动（报 determinism 错）。内置脚本已合规。要时间戳走 args 或工作流返回后再盖；要 ID 用 index 派生。
 > 试点只落 `implement`（fan-out 最受益）；`analyze --deep`（对抗式 fan-out）、`plan --candidates`（多方案 judge panel）标为**未来可选、暂未实现**，避免一次性铺开违背"轻量但稳"。
 

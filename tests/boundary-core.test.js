@@ -13,6 +13,7 @@ import {
   diffSnapshots,
   validateWaveAudit,
   validateQualityEvidence,
+  validateAcceptanceEvidence,
 } from '../workflows/sdd-implement-core.js'
 
 function snapshot(entries, overrides = {}) {
@@ -53,7 +54,7 @@ function plannedTask(overrides = {}) {
     depends: [],
     doneWhen: 'the behavior is verified',
     risk: 'low',
-    review: 'wave-sample',
+    review: 'required',
     testPolicy: 'persistent',
     resources: [],
     gateIsolation: 'scoped',
@@ -426,6 +427,14 @@ test('validatePlan validates task policy enums and high-risk review', () => {
   assert.equal(plan.errors.some(error => error.code === 'HIGH_RISK_REVIEW_REQUIRED'), true)
 })
 
+test('validatePlan requires a fresh Reviewer for every task', () => {
+  const plan = validatePlan([{ id: 'W1', taskIds: ['T1'] }], {
+    T1: plannedTask({ risk: 'low', review: 'wave-sample' }),
+  })
+  assert.equal(plan.ok, false)
+  assert.equal(plan.errors.some(error => error.code === 'INVALID_TASK_POLICY' && error.field === 'review'), true)
+})
+
 test('validatePlan rejects task-level worktree isolation in Workflow mode', () => {
   const plan = validatePlan([{ id: 'W1', taskIds: ['T1'] }], {
     T1: plannedTask({ isolation: 'worktree' }),
@@ -471,4 +480,18 @@ test('quality evidence requires every gate and rejects non-zero or explicit fail
   assert.equal(validateQualityEvidence(quality, evidence.map(record => (
     record.gate === 'test' ? { ...record, outcome: 'fail' } : record
   ))).ok, false)
+})
+
+test('acceptance evidence must be non-empty, unique, and fully passing', () => {
+  assert.equal(validateAcceptanceEvidence([
+    { criterion: 'Done when: rejects invalid input', outcome: 'pass', evidence: 'invalid-input test exits 0' },
+  ]).ok, true)
+  assert.equal(validateAcceptanceEvidence([]).ok, false)
+  assert.equal(validateAcceptanceEvidence([
+    { criterion: 'AC1', outcome: 'not_run', evidence: 'not executed' },
+  ]).ok, false)
+  assert.equal(validateAcceptanceEvidence([
+    { criterion: 'AC1', outcome: 'pass', evidence: 'test-a' },
+    { criterion: 'AC1', outcome: 'pass', evidence: 'test-b' },
+  ]).ok, false)
 })

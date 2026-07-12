@@ -75,10 +75,10 @@ $ARGUMENTS
 
 4.5 **Workflow 首 Wave checkpoint（仅显式 `--workflow`）**：需求/消歧（lite）或拆解（full）获批后，展示本 feature 的规格/计划 diff 与待提交路径，AskUserQuestion 请求“提交批准后的规格 checkpoint 并启动首 Wave / 继续修改 / 暂停”。只有用户明确授权后，才精确 stage `TARGET_SPEC` 及 full 的 design/tasks 等本 feature 产物，检查 staged diff 无其它文件，提交 Conventional Commit，并确认 `FEATURE_ROOT` clean。未授权、提交失败或仍脏都暂停；不得直接进入 Workflow 后再让 clean-baseline 审计失败。
 
-5. **IMPLEMENT** → 按 implement 编排器规则从 `TASK_STATE_FILE` 读取任务并回填同一文件（full=`tasks.md`，lite=`spec.md`）；执行波次并发、隔离 implementer、独立 `code-reviewer` 风险门/波次抽样，最后由合并门与 `/sdd:verify` 共同兜底。
+5. **IMPLEMENT** → 按 implement 编排器规则从 `TASK_STATE_FILE` 读取任务并回填同一文件（full=`tasks.md`，lite=`spec.md`）；每个任务依次使用三个互不共享上下文的 fresh agent：Implementer 只修改、Verifier 只执行非写入门禁并提交证据、Reviewer 只审真实 diff/规格/Verifier 证据。最后由合并门与 `/sdd:verify` 共同兜底。
    - **（默认提示词编排）** 进入实现时按 implement 的 Boundary/Waves 规则并发普通 implementer，不自动切到动态 Workflow。只有用户显式以 `/sdd:auto --workflow ...` 调用时才把该 flag 传给 implement；启动前执行工具权限/Git 可审计范围预检，失败立即停止并报告，不得空转或静默降级。
-   - **评审门不得省略**：每 Wave 开始先记录独立 Git 基线/工作区快照。`Risk: high`、`Review: required`、发生任何 `DEVIATION` 或实际 diff 触及共享边界的任务，必须在标 `[x]` 前派全新 `code-reviewer`；其余每 Wave 至少抽样 1 个实际有 diff 的任务。reviewer 自行核对真实 `git diff` 与 evidence，不能采信 implementer 自报。
-   - 只有 reviewer `PASS` 才能放行被审任务；`BLOCK`/`REVISE`/`INCONCLUSIVE` 均回 implementer 修复后用新 reviewer 上下文重审，最多 2 轮，仍未 PASS → 标 `[!] blocked` 并进入异常卡点。默认提示词编排满足任务门禁与 Wave 抽样后可自动续跑下一波；**显式 `--workflow` 不可自动跨 Wave**：每 Wave 回填 `TASK_STATE_FILE`/Evidence 后展示真实 diff、review verdict 与四类 gate，AskUserQuestion 请求授权精确提交该 Wave checkpoint。只有提交成功且工作树 clean，才重新解析完整任务图并调用下一 Wave；拒绝/失败就暂停，不得越权 commit 或空转重试。
+   - **三角色隔离不得省略**：每 Wave 开始记录 Git baseline。Implementer fresh context 只改代码并返回 files；冻结实现后快照，再派 fresh Verifier 运行非写入门禁并生成 acceptance/evidence；核对前后快照必须一致。然后派 fresh Reviewer 审真实 diff、规格和 Verifier 工件。三个角色都不得看到或继承其他角色的会话历史，只传结构化工件。
+   - 只有每任务 fresh Reviewer `PASS` 才能放行；不存在 Wave 抽样豁免。非 PASS 把结构化 findings 交给 fresh Implementer 修复，再派 fresh Verifier 与 fresh Reviewer，最多 2 轮，仍未 PASS → blocked。
    - **记录偏移（与 /sdd:implement 一致，别丢）**：凡 implementer 回报的 `DEVIATION` 非"无"、或实现与 design 不符——**不管是否阻塞**，都**立即追加到 `design.md`（lite 则 `spec.md`）的 `## Deviations / 实现偏移` 段**（`原 X → 实际 Y · 原因 · 影响的 AC`）。小偏移自动记下不打断；须改方向的（blocked）才停下问。
    - **记录延后（与 /sdd:implement 一致，防漏掉）**：对规范化 `Source/AC/Content/Reason/Target` 算稳定 `decisionDigest`，按 init 的永久 backlog-id ref CAS 原子占 ID并新建 item；禁止追加共享 BACKLOG.md。CAS 失败取下一 seq，只有 blob/request/item 三方 digest 一致才恢复，Source 相同但 Content/Reason 不同不得复用。
    - 仅在**异常**时 🚦 停下 AskUserQuestion：implementer 报 `blocked`（须偏离 design）、反复越界 Boundary、要延后某范围、或要做破坏性操作 → 让用户决定（改设计 / 接受偏移(记 Deviations) / **延后补齐(记 BACKLOG)** / 跳过不做(记 Non-Goals) / 停）。

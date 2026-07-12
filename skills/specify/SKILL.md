@@ -121,7 +121,7 @@ $ARGUMENTS
 
 ## Tasks（含 Boundary + 简单 Waves）
 - Boundary 语法：精确文件写 `src/a.ts`；目录必须写 `src/screens/login/` 或 `src/screens/login/**`。无尾斜的 `src/screens/login` 会被当成精确文件，不得用来表示目录。
-- [ ] **T1** <标题> · Boundary: `<精确文件或带 / 的目录>` · Depends: — · Risk: low|medium|high(<理由>) · Review: required|wave-sample · Test policy: persistent|ephemeral|none(<理由>) · Resources: `[]`|`port:...`|`test-db:...` · Gate isolation: scoped|wave-exclusive · Done when: <判据>
+- [ ] **T1** <标题> · Boundary: `<精确文件或带 / 的目录>` · Depends: — · Risk: low|medium|high(<理由>) · Review: required（每任务 fresh Reviewer） · Test policy: persistent|ephemeral|none(<理由>) · Resources: `[]`|`port:...`|`test-db:...` · Gate isolation: scoped|wave-exclusive · Done when: <判据>
 - [ ] **T2** … · Boundary: … · Depends: T1 · Risk: … · Review: … · Test policy: … · Resources: … · Gate isolation: … · Done when: …
 - Waves: W1(并行) T1,T?；W2 T2 …
 

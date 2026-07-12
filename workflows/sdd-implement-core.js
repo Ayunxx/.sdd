@@ -315,7 +315,7 @@ function createSddWorkflowCore() {
       }
       const policyPatterns = {
         risk: /^(?:low|medium|high)(?:$|[\s(（:：])/,
-        review: /^(?:required|wave-sample)(?:$|[\s(（:：])/,
+        review: /^required(?:$|[\s(（:：])/,
         testPolicy: /^(?:persistent|ephemeral|none)(?:$|[\s(（:：])/,
         gateIsolation: /^(?:scoped|wave-exclusive)(?:$|[\s(（:：])/,
       }
@@ -611,7 +611,7 @@ function createSddWorkflowCore() {
     const noChangeTasks = []
     for (const id of taskIds) {
       const result = taskResults[id] || {}
-      if (result.state === 'done' && (!Array.isArray(result.files) || result.files.length === 0)) noChangeTasks.push(id)
+      if ((result.state === 'implemented' || result.state === 'done') && (!Array.isArray(result.files) || result.files.length === 0)) noChangeTasks.push(id)
       for (const rawPath of result.files || []) {
         const parsed = tryNormalizePath(rawPath)
         if (!parsed.ok) {
@@ -689,6 +689,28 @@ function createSddWorkflowCore() {
     return { ok: errors.length === 0, errors }
   }
 
+  function validateAcceptanceEvidence(acceptance) {
+    const errors = []
+    const records = Array.isArray(acceptance) ? acceptance : []
+    if (records.length === 0) errors.push('acceptance evidence must contain at least one Done when/AC record')
+    const seen = new Set()
+    for (const record of records) {
+      if (!record || typeof record !== 'object' || Array.isArray(record)) {
+        errors.push('acceptance evidence has an invalid record')
+        continue
+      }
+      const criterion = typeof record.criterion === 'string' ? record.criterion.trim() : ''
+      if (!criterion) errors.push('acceptance evidence has no criterion')
+      else if (seen.has(criterion)) errors.push(`duplicate acceptance criterion: ${criterion}`)
+      else seen.add(criterion)
+      if (record.outcome !== 'pass') errors.push(`${criterion || '(unknown criterion)'} acceptance outcome is not pass: ${record.outcome || '(missing)'}`)
+      if (typeof record.evidence !== 'string' || record.evidence.trim().length === 0) {
+        errors.push(`${criterion || '(unknown criterion)'} acceptance evidence is empty`)
+      }
+    }
+    return { ok: errors.length === 0, errors }
+  }
+
   return {
     REQUIRED_GATES,
     normalizePath,
@@ -704,6 +726,7 @@ function createSddWorkflowCore() {
     diffSnapshots,
     validateWaveAudit,
     validateQualityEvidence,
+    validateAcceptanceEvidence,
   }
 }
 // SDD_WORKFLOW_CORE_END
@@ -724,4 +747,5 @@ export const {
   diffSnapshots,
   validateWaveAudit,
   validateQualityEvidence,
+  validateAcceptanceEvidence,
 } = sddWorkflowCore

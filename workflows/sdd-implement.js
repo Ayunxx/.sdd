@@ -19,16 +19,27 @@ export const meta = {
   name: 'sdd-implement',
   description: "Run exactly one selected feature Wave with fail-fast dispatch, dependency gates, and Git-visible Boundary reconciliation.",
   phases: [
-    { title: 'implement', detail: 'Validate the plan, dispatch task agents, and audit each completed wave.' },
+    { title: 'implement', detail: 'Dispatch fresh Implementers and freeze their Git-visible changes.' },
+    { title: 'verify', detail: 'Dispatch fresh non-mutating Verifiers and reject any verification side effect.' },
   ],
 }
 
 const ImplementerSchema = {
   type: 'object', additionalProperties: false,
-  required: ['status', 'files', 'quality', 'evidence', 'deviation', 'notes'],
+  required: ['status', 'files', 'deviation', 'notes'],
   properties: {
-    status: { type: 'string', enum: ['done', 'blocked'] },
+    status: { type: 'string', enum: ['implemented', 'blocked'] },
     files: { type: 'array', items: { type: 'string' } },
+    deviation: { type: 'string' },
+    notes: { type: 'string' },
+  },
+}
+
+const VerifierSchema = {
+  type: 'object', additionalProperties: false,
+  required: ['status', 'quality', 'evidence', 'acceptance', 'worktreeUnchanged', 'notes'],
+  properties: {
+    status: { type: 'string', enum: ['pass', 'fail', 'blocked'] },
     quality: {
       type: 'object', additionalProperties: false,
       required: ['format', 'lint', 'typecheck', 'test'],
@@ -49,7 +60,19 @@ const ImplementerSchema = {
         },
       },
     },
-    deviation: { type: 'string' },
+    acceptance: {
+      type: 'array', minItems: 1,
+      items: {
+        type: 'object', additionalProperties: false,
+        required: ['criterion', 'outcome', 'evidence'],
+        properties: {
+          criterion: { type: 'string', minLength: 1 },
+          outcome: { type: 'string', enum: ['pass', 'fail', 'not_run'] },
+          evidence: { type: 'string', minLength: 1 },
+        },
+      },
+    },
+    worktreeUnchanged: { type: 'boolean' },
     notes: { type: 'string' },
   },
 }
@@ -400,7 +423,7 @@ function createSddWorkflowCore() {
       }
       const policyPatterns = {
         risk: /^(?:low|medium|high)(?:$|[\s(（:：])/,
-        review: /^(?:required|wave-sample)(?:$|[\s(（:：])/,
+        review: /^required(?:$|[\s(（:：])/,
         testPolicy: /^(?:persistent|ephemeral|none)(?:$|[\s(（:：])/,
         gateIsolation: /^(?:scoped|wave-exclusive)(?:$|[\s(（:：])/,
       }
@@ -696,7 +719,7 @@ function createSddWorkflowCore() {
     const noChangeTasks = []
     for (const id of taskIds) {
       const result = taskResults[id] || {}
-      if (result.state === 'done' && (!Array.isArray(result.files) || result.files.length === 0)) noChangeTasks.push(id)
+      if ((result.state === 'implemented' || result.state === 'done') && (!Array.isArray(result.files) || result.files.length === 0)) noChangeTasks.push(id)
       for (const rawPath of result.files || []) {
         const parsed = tryNormalizePath(rawPath)
         if (!parsed.ok) {
@@ -774,6 +797,28 @@ function createSddWorkflowCore() {
     return { ok: errors.length === 0, errors }
   }
 
+  function validateAcceptanceEvidence(acceptance) {
+    const errors = []
+    const records = Array.isArray(acceptance) ? acceptance : []
+    if (records.length === 0) errors.push('acceptance evidence must contain at least one Done when/AC record')
+    const seen = new Set()
+    for (const record of records) {
+      if (!record || typeof record !== 'object' || Array.isArray(record)) {
+        errors.push('acceptance evidence has an invalid record')
+        continue
+      }
+      const criterion = typeof record.criterion === 'string' ? record.criterion.trim() : ''
+      if (!criterion) errors.push('acceptance evidence has no criterion')
+      else if (seen.has(criterion)) errors.push(`duplicate acceptance criterion: ${criterion}`)
+      else seen.add(criterion)
+      if (record.outcome !== 'pass') errors.push(`${criterion || '(unknown criterion)'} acceptance outcome is not pass: ${record.outcome || '(missing)'}`)
+      if (typeof record.evidence !== 'string' || record.evidence.trim().length === 0) {
+        errors.push(`${criterion || '(unknown criterion)'} acceptance evidence is empty`)
+      }
+    }
+    return { ok: errors.length === 0, errors }
+  }
+
   return {
     REQUIRED_GATES,
     normalizePath,
@@ -789,6 +834,7 @@ function createSddWorkflowCore() {
     diffSnapshots,
     validateWaveAudit,
     validateQualityEvidence,
+    validateAcceptanceEvidence,
   }
 }
 // SDD_WORKFLOW_CORE_END
@@ -800,28 +846,46 @@ const {
   validatePlan,
   normalizeRoot,
   validateSnapshot,
+  diffSnapshots,
   validateWaveAudit,
   validateQualityEvidence,
+  validateAcceptanceEvidence,
 } = createSddWorkflowCore()
 
 function implPrompt(t, feedback, ctx) {
   const pack = ctx.stackPacks && ctx.stackPacks[t.domain] ? ctx.stackPacks[t.domain] : '（本领域无能力包，按 constitution §3 默认门禁）'
   const skills = ctx.injectSkills && ctx.injectSkills.length ? ctx.injectSkills.join(', ') : '（无）'
   return [
-    '你是 implementer 子代理，只实现【这一个】SDD 任务，先 Grep 复用既有代码、严守 Boundary，按 ImplementerSchema 结构化返回（status/files/quality/evidence/deviation/notes）。evidence 每项必须含 gate/outcome/command/exitCode/summary。',
+    '你是全新上下文的 implementer，只实现【这一个】SDD 任务。只修改实现与必要测试，严守 Boundary；不得执行 format/lint/typecheck/test/build/coverage 门禁，不得自报 PASS。按 ImplementerSchema 返回 status/files/deviation/notes。',
     `工作根 FEATURE_ROOT（唯一可操作目录，绝不碰其它目录尤其主目录）: ${ctx.featureRoot}`,
-    '硬规则：所有 shell/门禁命令第一步必须先 `cd` 进上面的 FEATURE_ROOT；只在此目录内读/写/搜索/跑测试；禁止 git add/commit/reset/checkout/clean。files 只列本次执行产生净变化的相对路径，不得漏报或把未变化文件算进去。本任务规格内容已在本 prompt 给全，不要去读主目录的 specs。',
+    '硬规则：只在上面的 FEATURE_ROOT 内读/写/搜索；禁止运行完成门禁，禁止 git add/commit/reset/checkout/clean。files 只列本次执行产生净变化的相对路径，不得漏报或把未变化文件算进去。本任务规格内容已在本 prompt 给全，不要读取其它角色的会话或结论。',
     `功能目录(规格参考,只读): ${ctx.featureDir}`, `宪法: ${ctx.constitutionPath}`,
     `任务 ${t.id}: ${t.what}`,
     `Boundary（唯一可写范围，越界=失败）: ${(t.boundary || []).join(', ')}`,
     `Refs: ${t.refs || '（无）'} · Done when: ${t.doneWhen || '见 Refs'}`,
-    `Risk: ${t.risk || '未标注（按实际影响保守判断）'} · Review: ${t.review || 'wave-sample'} · Test policy: ${t.testPolicy || '按 constitution §4 风险分层'}`,
+    `Risk: ${t.risk || '未标注（按实际影响保守判断）'} · Review: ${t.review || 'missing (block)'} · Test policy: ${t.testPolicy || '按 constitution §4 风险分层'}`,
     `Exclusive resources: ${(t.resources || []).join(', ') || 'none'} · Gate isolation: ${t.gateIsolation || 'missing (block)'}`,
     `领域能力包 specs/stacks/${t.domain}.md: ${pack}（优先用其 §7 本层门禁，否则 constitution §3）`,
     `注入 skill: ${skills}`,
     t.isolation === 'worktree' ? '隔离: 在独立 worktree 实现，事后由编排器合并。' : '隔离: 当前工作树，绝不碰 Boundary 外文件。',
-    '报告前实际执行 format+lint+typecheck+相关 test。quality 保留简要文本；evidence 必须为四类门禁逐项给出 gate/outcome/command/exitCode/summary（可选 logPath）。outcome 只可为 pass/fail/not_applicable/not_run；不适用项用 command=N/A(<具体原因>)。任一适用命令非 0、未执行或须偏离 design 时 status=blocked。关键契约/安全/历史缺陷回归测试必须保留，只有纯探索性测试才可临时使用。',
-    feedback ? `\n## 上一轮被打回（必须修复后再报 done）\n${feedback}` : '',
+    '关键契约/安全/历史缺陷所需回归测试必须作为实现资产写入 Boundary；禁止 skip/only、恒真断言、过宽 mock、禁用检查、降低覆盖率或删除既有回归。完成代码修改后只报 implemented，门禁由另一个 fresh verifier 执行。',
+    feedback ? `\n## 编排器转述的结构化返工项（来自独立 Verifier/Reviewer）\n${feedback}` : '',
+  ].join('\n')
+}
+
+function verifierPrompt(t, implementation, ctx) {
+  const pack = ctx.stackPacks && ctx.stackPacks[t.domain] ? ctx.stackPacks[t.domain] : '（本领域无能力包，按 constitution §3 默认门禁）'
+  return [
+    '你是全新上下文的 verifier，只核对【这一个】SDD 任务。不得修改代码、测试、规格、配置、快照或任务状态；不得修 bug；不得采信 implementer 的完成结论。按 VerifierSchema 返回 status/quality/evidence/acceptance/worktreeUnchanged/notes。',
+    `工作根 FEATURE_ROOT: ${ctx.featureRoot}`,
+    `功能目录(规格参考,只读): ${ctx.featureDir} · 宪法: ${ctx.constitutionPath}`,
+    `任务 ${t.id}: ${t.what}`,
+    `Boundary: ${(t.boundary || []).join(', ')} · Implementer 声明 files（只作对账线索）: ${(implementation.files || []).join(', ')}`,
+    `Refs: ${t.refs || '（无）'} · Done when: ${t.doneWhen || '见 Refs'}`,
+    `Test policy: ${t.testPolicy} · Resources: ${(t.resources || []).join(', ') || 'none'} · Gate isolation: ${t.gateIsolation}`,
+    `能力包: ${pack}（优先读取 §7 非写入门禁，否则 constitution §3）`,
+    '独立读取真实 git status/diff；只执行非写入 format-check/lint(no fix)/typecheck/相关 test。禁止 --write、--fix、更新快照、生成锁文件或任何会改变工作树的命令。只有写入型门禁时 status=blocked。',
+    '四类 evidence 逐项提供 gate/outcome/command/exitCode/summary；不适用项用 not_applicable + N/A(<理由>)。acceptance 逐条覆盖 Done when/相关 AC，给测试名、输出或实测值。任一 not_run/fail/空证据/非零必须 status=fail 或 blocked。运行前后核对 Git；若工作树发生任何额外变化，worktreeUnchanged=false 且 status=blocked。',
   ].join('\n')
 }
 
@@ -847,13 +911,13 @@ function printableError(error) {
 async function callWorkflowAgent(prompt, options, context) {
   try {
     const value = await agent(prompt, options)
-    if (value === null || value === undefined) {
+    if (value === null || value === undefined || (typeof value === 'string' && value.trim().length === 0)) {
       return {
         ok: false,
         failure: runtimeFailure({
           ...context,
-          code: 'AGENT_NULL',
-          message: `Workflow agent ${context.label} returned null; inspect the Workflow journal for a safety block, skipped dispatch, or terminal API error.`,
+          code: 'AGENT_EMPTY_RESULT',
+          message: `Workflow agent ${context.label} returned an empty result; inspect the Workflow journal for a safety block, skipped dispatch, or terminal API error.`,
         }),
       }
     }
@@ -992,60 +1056,32 @@ for (const id of planCheck.scheduledTaskIds) {
 
 async function runTask(t) {
   try {
-    let feedback = null, attempt = 0
-    while (true) {
-      const label = `impl:${t.id}`
-      const invocation = await callWorkflowAgent(implPrompt(t, feedback, ctx), {
-        schema: ImplementerSchema,
-        label,
-        phase: `Wave ${t.waveId}`,
-      }, {
-        stage: 'implement',
-        label,
-        task: t.id,
-        wave: t.waveId,
-      })
-      if (!invocation.ok) return { runtimeFailure: invocation.failure }
-      const impl = invocation.value
-      if (!impl || typeof impl !== 'object' || Array.isArray(impl)) {
-        return {
-          runtimeFailure: runtimeFailure({
-            stage: 'implement', label, task: t.id, wave: t.waveId,
-            code: 'AGENT_INVALID_RESULT',
-            message: `Workflow agent ${label} returned a non-object result.`,
-          }),
-        }
-      }
-      if (impl.status === 'blocked')
-        return {
-          state: 'blocked', reason: (impl.deviation && impl.deviation.trim()) || impl.notes || 'implementer 自报 blocked',
-          files: impl.files, quality: impl.quality, evidence: impl.evidence, attempts: attempt + 1,
-        }
-
-      const stray = (impl.files || []).filter(f => !withinBoundary(f, t.boundary))
-      const qualityCheck = validateQualityEvidence(impl.quality, impl.evidence)
-      const violations = []
-      if (stray.length) violations.push(`自报越界改动 ${stray.join(', ')}（仅可改 ${(t.boundary || []).join(', ')}）`)
-      if (!qualityCheck.ok) violations.push(`质量证据不合格: ${qualityCheck.errors.join('; ')}`)
-      if (violations.length) {
-        if (attempt >= 2) {
-          return {
-            state: 'blocked', reason: `反复未通过实现闸: ${violations.join(' | ')}`,
-            files: impl.files, quality: impl.quality, evidence: impl.evidence, attempts: attempt + 1,
-          }
-        }
-        attempt++
-        feedback = `${violations.join('\n')}\n修复后重新执行门禁并如实回报 evidence；不得只修改报告。`
-        log(`T${t.id} 未通过实现闸，第${attempt}次返工`)
-        continue
-      }
-
-      // 此处仅通过任务自报闸；Wave 结束后还会用独立 Git 快照核验真实净改动。
-      return {
-        state: 'done', files: impl.files, quality: impl.quality, evidence: impl.evidence,
-        deviation: impl.deviation, attempts: attempt + 1,
-      }
+    const label = `impl:${t.id}`
+    const invocation = await callWorkflowAgent(implPrompt(t, null, ctx), {
+      schema: ImplementerSchema,
+      label,
+      phase: `Wave ${t.waveId} implement`,
+    }, {
+      stage: 'implement', label, task: t.id, wave: t.waveId,
+    })
+    if (!invocation.ok) return { runtimeFailure: invocation.failure }
+    const impl = invocation.value
+    if (!impl || typeof impl !== 'object' || Array.isArray(impl)) {
+      return { runtimeFailure: runtimeFailure({
+        stage: 'implement', label, task: t.id, wave: t.waveId, code: 'AGENT_INVALID_RESULT',
+        message: `Workflow agent ${label} returned a non-object result.`,
+      }) }
     }
+    if (impl.status === 'blocked') return {
+      state: 'blocked', reason: (impl.deviation && impl.deviation.trim()) || impl.notes || 'implementer 自报 blocked',
+      files: impl.files || [], deviation: impl.deviation, attempts: 1,
+    }
+    const stray = (impl.files || []).filter(f => !withinBoundary(f, t.boundary))
+    if (stray.length > 0) return {
+      state: 'blocked', reason: `Implementer 自报越界改动 ${stray.join(', ')}（仅可改 ${(t.boundary || []).join(', ')}）`,
+      files: impl.files || [], deviation: impl.deviation, attempts: 1,
+    }
+    return { state: 'implemented', files: impl.files || [], deviation: impl.deviation, attempts: 1 }
   } catch (error) {
     return {
       runtimeFailure: runtimeFailure({
@@ -1054,6 +1090,49 @@ async function runTask(t) {
         message: `Workflow task wrapper threw: ${printableError(error)}`,
       }),
     }
+  }
+}
+
+async function runVerifier(t, implementation) {
+  try {
+    const label = `verify:${t.id}`
+    const invocation = await callWorkflowAgent(verifierPrompt(t, implementation, ctx), {
+      schema: VerifierSchema,
+      label,
+      phase: `Wave ${t.waveId} verify`,
+    }, {
+      stage: 'verify', label, task: t.id, wave: t.waveId,
+    })
+    if (!invocation.ok) return { runtimeFailure: invocation.failure }
+    const verification = invocation.value
+    if (!verification || typeof verification !== 'object' || Array.isArray(verification)) {
+      return { runtimeFailure: runtimeFailure({
+        stage: 'verify', label, task: t.id, wave: t.waveId, code: 'AGENT_INVALID_RESULT',
+        message: `Workflow agent ${label} returned a non-object result.`,
+      }) }
+    }
+    const qualityCheck = validateQualityEvidence(verification.quality, verification.evidence)
+    const acceptanceCheck = validateAcceptanceEvidence(verification.acceptance)
+    const violations = []
+    if (verification.status !== 'pass') violations.push(`Verifier status=${verification.status}: ${verification.notes || '无说明'}`)
+    if (verification.worktreeUnchanged !== true) violations.push('Verifier 报告核对前后工作树发生变化')
+    if (!qualityCheck.ok) violations.push(`质量证据不合格: ${qualityCheck.errors.join('; ')}`)
+    if (!acceptanceCheck.ok) violations.push(`验收证据不合格: ${acceptanceCheck.errors.join('; ')}`)
+    if (violations.length > 0) return {
+      ...implementation, state: 'blocked', reason: `独立核对未通过: ${violations.join(' | ')}`,
+      quality: verification.quality, evidence: verification.evidence, acceptance: verification.acceptance,
+      verifierNotes: verification.notes,
+    }
+    return {
+      ...implementation, state: 'done', quality: verification.quality,
+      evidence: verification.evidence, acceptance: verification.acceptance,
+      verifierNotes: verification.notes,
+    }
+  } catch (error) {
+    return { runtimeFailure: runtimeFailure({
+      stage: 'verify', label: `verify:${t.id}`, task: t.id, wave: t.waveId,
+      code: 'VERIFIER_RUNTIME_THROW', message: `Workflow verifier wrapper threw: ${printableError(error)}`,
+    }) }
   }
 }
 
@@ -1207,18 +1286,93 @@ waveLoop: for (const wave of waves) {
     results[id] = taskResult
   }
 
-  const afterInvocation = await takeAuditSnapshot('after', wave.id)
+  // 先冻结 Implementer 结束后的真实快照。Verifier 必须从这个快照开始，且不得改变它。
+  const implementedInvocation = await takeAuditSnapshot('implemented', wave.id)
+  if (!implementedInvocation.ok) {
+    abortReason = stopForRuntimeFailures([implementedInvocation.failure], wave.id, runnable)
+    break waveLoop
+  }
+  const implemented = implementedInvocation.value
+  const implementationAudit = validateWaveAudit({
+    before, after: implemented, expectedRoot: ctx.featureRoot,
+    taskIds: runnable, tasks, taskResults: results,
+  })
+  auditTrail.push({
+    wave: wave.id, ok: implementationAudit.ok, stage: 'implemented', errors: implementationAudit.errors,
+    actualFiles: implementationAudit.actualFiles, reportedFiles: implementationAudit.reportedFiles,
+  })
+  if (!implementationAudit.ok) {
+    const reason = `Wave ${wave.id} Implementer 真实 Git 变更审计失败: ${implementationAudit.errors.join(' | ')}`
+    for (const id of runnable) results[id] = { ...results[id], state: 'blocked', reason }
+    log(reason)
+    abortReason = reason
+    break waveLoop
+  }
+
+  const verifierIds = runnable.filter(id => results[id] && results[id].state === 'implemented')
+  if (verifierIds.length > 0) {
+    let verifierOut
+    const verifierFailures = []
+    try {
+      verifierOut = await parallel(verifierIds.map(id => () => runVerifier({ ...tasks[id], waveId: wave.id }, results[id])))
+    } catch (error) {
+      verifierFailures.push(runtimeFailure({
+        stage: 'verify:parallel', label: `verify-parallel:${wave.id}`, wave: wave.id,
+        code: 'VERIFIER_PARALLEL_THROW', message: `Verifier parallel threw: ${printableError(error)}`,
+      }))
+    }
+    if (verifierFailures.length === 0 && !Array.isArray(verifierOut)) {
+      verifierFailures.push(runtimeFailure({
+        stage: 'verify:parallel', label: `verify-parallel:${wave.id}`, wave: wave.id,
+        code: 'VERIFIER_PARALLEL_INVALID_RESULT', message: 'Verifier parallel did not return an array.',
+      }))
+    } else if (verifierFailures.length === 0) {
+      for (let index = 0; index < verifierIds.length; index++) {
+        const id = verifierIds[index]
+        const verifierResult = verifierOut[index]
+        if (!verifierResult) {
+          verifierFailures.push(runtimeFailure({
+            stage: 'verify:parallel', label: `verify:${id}`, task: id, wave: wave.id,
+            code: 'VERIFIER_RESULT_MISSING', message: `Verifier result missing for task ${id}.`,
+          }))
+        } else if (verifierResult.runtimeFailure) verifierFailures.push(verifierResult.runtimeFailure)
+        else results[id] = verifierResult
+      }
+      if (verifierOut.length !== verifierIds.length) verifierFailures.push(runtimeFailure({
+        stage: 'verify:parallel', label: `verify-parallel:${wave.id}`, wave: wave.id,
+        code: 'VERIFIER_RESULT_COUNT', message: `Verifier parallel returned ${verifierOut.length} results for ${verifierIds.length} tasks.`,
+      }))
+    }
+    if (verifierFailures.length > 0) {
+      abortReason = stopForRuntimeFailures(verifierFailures, wave.id, runnable)
+      break waveLoop
+    }
+  }
+
+  const afterInvocation = await takeAuditSnapshot('verified', wave.id)
   if (!afterInvocation.ok) {
     abortReason = stopForRuntimeFailures([afterInvocation.failure], wave.id, runnable)
     break waveLoop
   }
   const after = afterInvocation.value
-  const audit = validateWaveAudit({
-    before, after, expectedRoot: ctx.featureRoot,
-    taskIds: runnable, tasks, taskResults: results,
-  })
+  const implementedCheck = validateSnapshot(implemented, ctx.featureRoot)
+  const afterCheck = validateSnapshot(after, ctx.featureRoot)
+  const verifierChanges = implementedCheck.ok && afterCheck.ok ? diffSnapshots(implementedCheck.entries, afterCheck.entries) : []
+  const verifierAuditErrors = [...implementedCheck.errors, ...afterCheck.errors]
+  if (implementedCheck.ok && afterCheck.ok && implemented.head !== after.head) verifierAuditErrors.push(`HEAD changed during verification: ${implemented.head} -> ${after.head}`)
+  if (verifierChanges.length > 0) verifierAuditErrors.push(`Verifier changed worktree: ${verifierChanges.map(change => change.path).join(', ')}`)
+  if (verifierAuditErrors.length > 0) {
+    const reason = `Wave ${wave.id} Verifier 只读隔离失败: ${verifierAuditErrors.join(' | ')}`
+    for (const id of runnable) results[id] = { ...results[id], state: 'blocked', reason }
+    auditTrail.push({ wave: wave.id, ok: false, stage: 'verified', errors: verifierAuditErrors })
+    log(reason)
+    abortReason = reason
+    break waveLoop
+  }
+
+  const audit = validateWaveAudit({ before, after, expectedRoot: ctx.featureRoot, taskIds: runnable, tasks, taskResults: results })
   auditTrail.push({
-    wave: wave.id, ok: audit.ok, stage: 'after', errors: audit.errors,
+    wave: wave.id, ok: audit.ok, stage: 'verified', errors: audit.errors,
     actualFiles: audit.actualFiles, reportedFiles: audit.reportedFiles,
   })
   if (!audit.ok) {
@@ -1270,7 +1424,7 @@ return {
   audits: auditTrail,
   taskEvidence: all.map(item => ({
     id: item.id, state: item.state, reason: item.reason || '', files: item.files || [],
-    quality: item.quality || null, evidence: item.evidence || [], attempts: item.attempts || 0,
+    quality: item.quality || null, evidence: item.evidence || [], acceptance: item.acceptance || [], attempts: item.attempts || 0,
     source: item.source || '',
   })),
   deviations: all.filter(i => i.deviation && i.deviation.trim() && i.deviation.trim() !== '无').map(i => ({ id: i.id, deviation: i.deviation })),

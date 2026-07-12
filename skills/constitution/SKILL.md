@@ -54,13 +54,13 @@ $ARGUMENTS
 - 遵循的设计原则（SOLID / 高内聚低耦合 / DRY / KISS / YAGNI）；服务端/全栈的高可用约定（超时/重试/熔断/降级/幂等）
 
 ## 3. Code Quality Gate / 代码质量门禁（钉死命令，工具说了算）
-> 风格一致性靠确定性工具强制，不靠 AI 自觉——本框架用隔离子代理并行实现，风格漂移只能由**统一工具**抹平。下列是**全局默认**命令，会被 implementer 报告前自跑；合并门运行编译/类型检查、架构 fitness 与受影响的持久回归测试。填具体命令，别留空话。
+> 风格一致性靠确定性工具强制，不靠 AI 自觉。Implementer 只修改；全新 Verifier 使用下面的**非写入检查命令**独立核对；全新 Reviewer 再审真实 diff。合并门运行编译/类型检查、架构 fitness 与受影响持久回归测试。填具体命令，别留空话。
 > ＊全栈 monorepo 各层（包）命令不同时，可在对应能力包 `specs/stacks/<domain>.md §7 本层门禁` 声明覆盖本默认。
-- **Format（格式化）:** [如 `prettier --write .` / `ruff format .` / `gofmt -w .`]
+- **Format check（非写入）:** [如 `prettier --check <files>` / `ruff format --check <files>` / `gofmt -l <files>`；Verifier 禁止执行 `--write`/`--fix`]
 - **Lint:** [如 `eslint .` / `ruff check .` / `golangci-lint run`]
 - **Typecheck:** [如 `tsc --noEmit` / `mypy .`；无则 N/A]
 - **Test（实现期相关测试）:** [如 `npm test -- <affected>` / `pytest tests/<mod>` / `mvn -pl <module> -am test`；按 §4 决定测试持久化或仅作临时证据]
-> ⚠️ **门分两层、别混**：实施终端运行本任务相关测试并产出证据；主终端 `/sdd:worktree finish` 再运行编译/类型检查、架构 fitness 和**受影响的持久回归测试**，无需每次全库回归。
+> ⚠️ **角色与门分离**：Implementer 终端只修改；fresh Verifier 终端运行本任务非写入门禁并产出证据；fresh Reviewer 只读审查。主终端 `/sdd:worktree finish` 再运行合并门。三个角色不得复用上下文或互相自签。
 > ⚠️ **并发写门禁/资源隔离**：worker 的 formatter/fixer 只能显式接收本任务 Boundary/changed files；包级或仓库级写门禁移到 Wave checkpoint 串行执行。端口、测试 DB/schema、缓存、临时目录、浏览器 profile 必须按 task 唯一；无法隔离的任务独占 Wave。
 - **Config 文件:** [.editorconfig · 格式化/lint 配置 · `.gitattributes`（统一换行 LF/CRLF）]
 - **Error handling / Logging:** [统一约定]
@@ -80,6 +80,7 @@ $ARGUMENTS
 - **相称且复用优先**：改已有能力优先向现有测试类/fixture 增加用例；相关 AC 用参数化或同一测试组覆盖；能用轻量单测就不滥用重型集成测试。
 - **受影响测试进入合并门**：本地/CI 至少执行改动模块及依赖范围内的持久回归测试；全量回归可放在 PR 或 nightly，不要求每次本地执行。
 - ❌ 不允许只有实现者口头声称“测过”而没有命令/退出码/日志证据；❌ 不允许为了减少测试数量删除高价值回归。
+- **测试完整性**：禁止用 `skip`/`only`、恒真断言、空测试、过宽 mock、禁用类型/lint、降低覆盖率阈值或删除既有高价值回归来换取绿灯；确有例外必须记录位置、理由并经独立 reviewer 批准。
 
 ## 5. AI Guardrails / AI 红线
 > Claude 在本项目中**必须遵守**的硬性约束。
@@ -87,7 +88,7 @@ $ARGUMENTS
 - 永远要做：（如 改动必须可追溯到某条 requirement、破坏性操作先确认）
 
 ## 6. Definition of Done / 完成标准
-- **任务级**：§3 的 Format / Lint / Typecheck / 相关测试通过并有命令证据；按 §4 保留应持久化的回归测试；文档/规格已更新。
+- **任务级**：任务按 `pending → implementing → implemented → verifying → verified → reviewing → passed` 推进。每阶段使用全新隔离上下文：Implementer 只修改，Verifier 只核对且不得改变工作树，Reviewer 只审查。Done when/AC 逐条有 Verifier 行为证据，§3 非写入门禁通过，并经 Reviewer PASS 后才能完成。空结果、`not_run`、证据缺失、核对副作用或 Reviewer 非 PASS 一律失败关闭。
 - **功能级（合并门）**：合并到主干前，改动模块编译/类型检查 + fitness + 受影响持久回归测试全绿；`/sdd:verify` 按 AC 提供行为证据。
 
 ## 7. Stacks & Skills / 能力包与注入技能

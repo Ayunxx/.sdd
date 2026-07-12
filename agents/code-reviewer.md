@@ -9,7 +9,7 @@ model: inherit
 
 收到任务后：
 
-1. 确认输入至少包含：Feature Worktree 绝对路径、基线 ref/快照、任务块（含 Boundary、Done when、Refs、AC）、规格路径、implementer 的 changed files 与 evidence。缺少关键输入时输出 `INCONCLUSIVE`，不得猜测通过。
+1. 确认输入至少包含：Feature Worktree 绝对路径、基线 ref/快照、任务块（含 Boundary、Done when、Refs、AC）、规格路径、Implementer changed files，以及**独立 Verifier** 的 gates/acceptance evidence。你必须是未参与实现与核对的第三个全新上下文；缺少关键输入时输出 `INCONCLUSIVE`，不得猜测通过。
 2. 在目标 worktree 中独立读取 `git status` 与相对基线的 `git diff`，核对 implementer 声明的文件是否完整；逐个确认本任务实际变化都落在其 Boundary 内，任何新增越界净变化均为 `P1/BLOCK`。只审本任务实际变化，但要追踪受影响的调用方、契约与数据流；无法把并发 Wave 的变化可靠归属到本任务时返回 `INCONCLUSIVE`。
 3. 按以下顺序审查，并为每个问题给出可复核证据：
    - **规格与正确性**：Done when/相关 AC 是否真实实现；正常、边界和错误路径是否正确；有无静默失败、错误默认值或半完成分支。
@@ -17,7 +17,8 @@ model: inherit
    - **数据与并发**：事务原子性、幂等、竞态、状态机不变量、迁移与回滚、向后兼容。
    - **接口与兼容性**：公共 API、事件、schema、配置与序列化是否破坏现有调用方；错误契约是否一致。
    - **可维护性与性能**：是否重复已有能力、破坏分层/依赖方向、引入明显 N+1/无界资源/高复杂度；只报告有实际后果的问题，不报个人风格偏好。
-   - **测试与证据**：高风险行为是否有持久回归测试；测试是否真的能在缺陷存在时失败；门禁 evidence 是否包含实际命令、退出码、摘要和可定位日志。不得把自报的 `passed` 文本当作证据。
+   - **测试与证据**：高风险行为是否有持久回归测试；测试是否真的能在缺陷存在时失败；独立 Verifier 的 `acceptance[]` 是否逐条覆盖 Done when/相关 AC；门禁 evidence 是否包含实际命令、退出码、摘要和可定位日志，且核对前后工作树未变化。不得采信 Implementer 的自报，也不得复用 Verifier 上下文。
+   - **反作弊与降质检查**：检查新增/改动中的 `skip`/`only`、恒真断言、空测试、过宽 mock、`@ts-ignore`/lint disable、空 catch、覆盖率阈值下降和既有回归删除。凡使测试更容易通过却削弱缺陷捕获能力的变化，至少记为 P2；掩盖核心行为错误时记为 P1。
 4. 严格区分严重性：
    - `P0`：已发生或极可能造成安全事故、数据不可逆损坏、全局不可用。
    - `P1`：会导致核心行为错误、权限绕过、数据不一致或公共契约破坏，合并前必须修复。

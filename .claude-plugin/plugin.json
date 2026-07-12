@@ -1,11 +1,11 @@
 {
   "name": "sdd",
   "displayName": "Spec-Driven Development",
-  "version": "0.29.0",
+  "version": "0.31.0",
   "author": {
     "name": "Ayunxx"
   },
-  "description": "规格驱动开发工作流 / Spec-Driven Development for Claude Code: constitution → stack → specify → clarify → plan → tasks → implement → verify。以一 feature 一 worktree 保持规格、代码与证据同源；任务级上下文隔离 + Boundary/Waves 并发；实现门禁记录可核验证据，关键回归测试持久化，合并门执行改动模块编译、架构 fitness 与受影响测试；另含 Stop hook、Conventional Commits、delta 归档、实时状态、延后台账、文档自动评审、领域能力包和可选动态 Workflow 编排。",
+  "description": "规格驱动开发工作流 / Spec-Driven Development for Claude Code: constitution → stack → specify → clarify → plan → tasks → implement → verify。每任务以 fresh Implementer（只修改）→ fresh Verifier（只核对）→ fresh Reviewer（只审查）隔离上下文，配合 Boundary/Waves、Git 快照、可核验证据、持久回归与合并门；另含 worktree 生命周期、Conventional Commits、delta 归档、实时状态、延后台账、文档评审、领域能力包和可选动态 Workflow。",
   "keywords": ["spec-driven-development", "sdd", "workflow", "planning", "spec", "parallel", "subagents", "code-review", "quality-gates", "regression-testing", "git-worktree", "hooks"],
   "hooks": "./hooks/hooks.json",
   "license": "MIT"
