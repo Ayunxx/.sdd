@@ -4,6 +4,12 @@ import { access, readFile } from 'node:fs/promises'
 
 const readProjectFile = path => readFile(new URL(`../${path}`, import.meta.url), 'utf8')
 
+test('standard hooks file is auto-discovered and not duplicated in the manifest', async () => {
+  const manifest = JSON.parse(await readProjectFile('.claude-plugin/plugin.json'))
+  assert.equal(Object.hasOwn(manifest, 'hooks'), false)
+  await access(new URL('../hooks/hooks.json', import.meta.url))
+})
+
 test('vendored install documents one stable layout and copies the complete Workflow runtime', async () => {
   const init = await readProjectFile('skills/init/SKILL.md')
 

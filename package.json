@@ -1,6 +1,6 @@
 {
   "name": "ayunxx-sdd-plugin",
-  "version": "0.31.0",
+  "version": "0.31.1",
   "description": "Regression tests for the Ayunxx SDD Claude Code plugin.",
   "private": true,
   "license": "MIT",
