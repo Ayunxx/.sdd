@@ -54,7 +54,7 @@ function plannedTask(overrides = {}) {
     depends: [],
     doneWhen: 'the behavior is verified',
     risk: 'low',
-    review: 'required',
+    review: 'feature-final(api compatibility)',
     testPolicy: 'persistent',
     resources: [],
     gateIsolation: 'scoped',
@@ -427,7 +427,7 @@ test('validatePlan validates task policy enums and high-risk review', () => {
   assert.equal(plan.errors.some(error => error.code === 'HIGH_RISK_REVIEW_REQUIRED'), true)
 })
 
-test('validatePlan requires a fresh Reviewer for every task', () => {
+test('validatePlan requires feature-final review metadata for every task', () => {
   const plan = validatePlan([{ id: 'W1', taskIds: ['T1'] }], {
     T1: plannedTask({ risk: 'low', review: 'wave-sample' }),
   })

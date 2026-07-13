@@ -121,13 +121,13 @@ $ARGUMENTS
 
 ## Tasks（含 Boundary + 简单 Waves）
 - Boundary 语法：精确文件写 `src/a.ts`；目录必须写 `src/screens/login/` 或 `src/screens/login/**`。无尾斜的 `src/screens/login` 会被当成精确文件，不得用来表示目录。
-- [ ] **T1** <标题> · Boundary: `<精确文件或带 / 的目录>` · Depends: — · Risk: low|medium|high(<理由>) · Review: required（每任务 fresh Reviewer） · Test policy: persistent|ephemeral|none(<理由>) · Resources: `[]`|`port:...`|`test-db:...` · Gate isolation: scoped|wave-exclusive · Done when: <判据>
+- [ ] **T1** <标题> · Boundary: `<精确文件或带 / 的目录>` · Depends: — · Risk: low|medium|high(<理由>) · Review: feature-final(<最终整体审查关注点>) · Test policy: persistent|ephemeral|none(<理由>) · Resources: `[]`|`port:...`|`test-db:...` · Gate isolation: scoped|wave-exclusive · Done when: <判据>
 - [ ] **T2** … · Boundary: … · Depends: T1 · Risk: … · Review: … · Test policy: … · Resources: … · Gate isolation: … · Done when: …
 - Waves: W1(并行) T1,T?；W2 T2 …
 
 ## Implementation Evidence / 实现证据（由 /sdd:implement 当场追加）
-| Task/Wave | State/Verdict | Baseline | Actual diff | Gates | Reviewer / Residual risk |
-|-----------|---------------|----------|-------------|-------|--------------------------|
+| Task/Wave | State/Verdict | Baseline | Actual diff | Gates |
+|-----------|---------------|----------|-------------|-------|
 
 ## Quality / 质量门禁
 - 遵循 constitution §3/§4：format/lint/typecheck/test 给出命令与退出码证据；高风险/偏移/共享边界任务独立 review；合并门跑编译 + fitness + 受影响持久测试

@@ -1,16 +1,16 @@
 ---
-description: 行为验证 / Verify the implemented feature against every AC using actual commands, durable evidence, persistent regression coverage for critical behavior, and a completion report. 区别于 /sdd:analyze（静态文档一致性）。
+description: 功能最终审查与行为验证 / Review the complete feature diff once, then verify every AC using actual commands, durable evidence, persistent regression coverage for critical behavior, and a completion report. 区别于 /sdd:analyze（静态文档一致性）。
 argument-hint: "[可选：当前功能目录名，如 001-user-auth；省略则取当前 sdd 分支]"
 disable-model-invocation: true
-allowed-tools: Read, Write, Edit, Glob, Grep, Bash
+allowed-tools: Read, Write, Edit, Glob, Grep, Bash, Task
 ---
 
-# /sdd:verify — 功能级行为验证
+# /sdd:verify — 功能级统一代码审查 + 行为验证
 
-你的任务：把一个**已实现完**的功能，拿真实运行结果对照它的验收标准（AC），逐条判定通过/失败，产出一张**问题清单（punch list）**。这是 GSD 式的独立 Verify 阶段——防止"代码写完了但其实没满足需求"的偏移在上线后才暴露。
+你的任务：把一个**所有任务都已实现并经 Verifier 核对**的功能，先对完整 feature diff 做一次独立代码审查，再拿真实运行结果对照验收标准（AC），逐条判定通过/失败，产出一张**问题清单（punch list）**。这是实现后的统一 Verify 阶段——防止"代码写完了但其实没满足需求"的偏移在上线后才暴露。
 
 > 与 `/sdd:analyze` 的分工：`analyze` 查**静态**的文档↔代码一致性（谁没对上）；`verify` 查**动态**的行为是否真的满足 AC（跑起来对不对）。
-> 与任务级 Verifier 的分工：Verifier 是 `/sdd:implement` 内每任务一个 fresh context 的只核对角色；本命令是所有任务完成后的功能级独立复验，同样不得复用 Implementer/Reviewer 上下文，也不修改业务代码。
+> 与任务级 Verifier 的分工：Verifier 是 `/sdd:implement` 内每任务一个 fresh context 的只核对角色；实现期间不派 Reviewer。本命令在所有任务完成后只派一个 fresh `code-reviewer` 审整个 feature，再做功能级独立复验；不得复用 Implementer/Verifier 上下文，也不修改业务代码。
 
 ## 用户输入
 $ARGUMENTS
@@ -30,10 +30,16 @@ $ARGUMENTS
 2. **建立验收矩阵**：把每条 AC 列出来，准备逐条验证。
 
 2.5 **任务状态兜底对账（修 Bug：状态没更新）**：逐条核对 `TASK_STATE_FILE` 的勾选 vs 任务**实际是否完成**（看代码/测试是否真在）——
-   - 实际代码存在但还是 `[ ]`/`[~]` → 核对 fresh Implementer files、fresh Verifier acceptance/gates/只读快照和 fresh Reviewer PASS；三份工件齐全才可改成 `[x]`。
-   - 标了 `[x]` 但实现、验收证据、门禁证据、required review 或持久测试缺失/失败 → 改回 `[~]`（明确失败则 `[!]`）并在报告里标红。
+   - 实际代码存在但还是 `[ ]`/`[~]` → 核对 fresh Implementer files、fresh Verifier acceptance/gates/只读快照；两份工件齐全才可改成 `[x]`。
+   - 标了 `[x]` 但实现、验收证据、门禁证据或持久测试缺失/失败 → 改回 `[~]`（明确失败则 `[!]`）并在报告里标红。
    - 若测试通过依赖 `skip`/`only`、恒真断言、过宽 mock、禁用类型/lint、降低覆盖率阈值或删除既有回归，判为 🔴 证据失真并退回 `/sdd:implement`，不能按绿处理。
-   - 这一步只修复跟踪状态，不重新定义完成标准；`/sdd:verify` 不能替 `/sdd:implement` 补签独立评审。
+   - 若仍有任一任务不是 `[x]`，停止本次最终审查与验收，先退回 `/sdd:implement T?`；不得对半成品 feature 派 Reviewer。
+
+2.6 **统一代码审查（整个 feature 只派一次）**：
+   - **建立整体范围**：从 worktree/分支身份与 feature checkpoint 记录中确定目标 base ref 和 `BASE_SHA`；对多个可能 base 无法唯一判定时停止询问，不猜。审查范围是 `BASE_SHA` 到当前 Feature Worktree 的全部 Git 可见净变化（含已提交、暂存、未暂存与 untracked 清单），不是最后一个任务或最后一个 Wave。
+   - **只派一个 fresh Reviewer**：用 Task 派一次 `code-reviewer`（插件内为 `sdd:code-reviewer`），传 Feature Worktree 绝对路径、`BASE_SHA`、完整规格、全部任务块/Boundary/Risk/`Review` 关注点、Implementation Evidence 和实际 changed files。不得按任务循环派发，不得让 Implementer 自己派发，也不得复用任何实现/核对会话。
+   - **Verdict 闸**：Reviewer 必须独立读取 `git status` 与相对 `BASE_SHA` 的完整 diff。只有 `PASS` 才继续判定最终全绿；`BLOCK`、`REVISE`、`INCONCLUSIVE` 都写入 punch list 与 `COMPLETION.md`，并按 finding 定位到 `/sdd:implement T?` 返工。返工完成后重新运行 `/sdd:verify`，届时再派一个新的 feature Reviewer；本次不得在内部循环追加 Reviewer。
+   - **证据落点**：记录审查 baseline、完整 scope、verdict、findings、test gaps 与 residual risk。`COMPLETION.md` 是 Reviewer 工件的唯一落点；`tasks.md/spec.md` 不要求逐任务 Reviewer verdict。
 
 3. **按 AC 的 `Verify:` 标签路由验证**（服务端/前端/嵌入式验法不同）：
    - **`auto`** → full 按 design §8、lite 按 spec.md 的 `How/Quality/Test policy` 映射，优先运行现有自动化用例与项目真实测试命令，记录**完整命令、退出码、关键输出摘要、测试名/文件和日志路径**。历史 Bug、公共契约、鉴权安全、状态机/领域不变量、迁移、并发事务、共享核心能力若没有持久回归测试，判为 🔴 测试缺口并退回 `/sdd:implement`；不得用临时测试冒充长期保护。
@@ -46,7 +52,12 @@ $ARGUMENTS
 4. **输出 punch list**（直接在对话给）：
 ```
 # Verify 报告：NNN-slug
-**结论:** 🟢 全部通过 / 🟡 有缺口/待背书 / 🔴 关键 AC 未达成
+**结论:** 🟢 审查与 AC 全部通过 / 🟡 有缺口/待背书 / 🔴 代码审查未通过或关键 AC 未达成
+
+## 统一代码审查
+- **Verdict:** PASS | REVISE | BLOCK | INCONCLUSIVE
+- **Scope:** BASE_SHA..Feature Worktree
+- **Findings / residual risk:** …
 
 ## 验收矩阵
 | AC | 方法 | 结果 | 证据/实测值 |
@@ -75,7 +86,7 @@ $ARGUMENTS
 - **AC:** a / b 通过 · 待人工背书(manual-HW): [AC?...] · 未达成: [AC?...]
 - **Success Criteria:** [逐条 达成/未达成 + 实测值]
 - **质量门禁:** format/lint/typecheck/test 的实际命令、退出码与日志摘要（或标未过项）
-- **独立评审:** 每任务 fresh Reviewer verdict / 基线 / 修复轮次 / residual risk
+- **独立评审:** feature 级 fresh Reviewer verdict / BASE_SHA / 完整 diff scope / findings / residual risk
 
 ## Quality Evidence / 质量证据
 | Scope | Gate / AC | Command or method | Exit | Summary / Log |
@@ -107,7 +118,7 @@ $ARGUMENTS
    - 报告 punch list + **已写/更新 `COMPLETION.md` 路径** + 本次 BACKLOG 的勾掉/新增项。
    - 给修复建议——回到哪个阶段（多为 `/sdd:implement T?`，或缺测试新开任务）。
    - **若行为是"有意"偏离 AC（业务调整非 bug）**：不是修代码，而是**规格该对账**——提示把变更回填进 requirements/design（reconcile）。
-   - **全部通过 → 提示收尾**：先把 Feature Worktree 中的规格、代码、`TASK_STATE_FILE`、`COMPLETION.md` 与台账修改提交到 `sdd/NNN-slug`，确认工作树干净；再切回主终端串行运行 `/sdd:worktree finish <feature>`（对账+合并+自动删 worktree，会 finalize COMPLETION.md）。
+   - **Reviewer PASS 且 AC 全部通过 → 提示收尾**：先把 Feature Worktree 中的规格、代码、`TASK_STATE_FILE`、`COMPLETION.md` 与台账修改提交到 `sdd/NNN-slug`，确认工作树干净；再切回主终端串行运行 `/sdd:worktree finish <feature>`（对账+合并+自动删 worktree，会 finalize COMPLETION.md）。
 
 ## 纪律
 - ❌ 本命令**不改业务代码、不修 bug**——但**会**写 `COMPLETION.md` 报告、兜底修正 `TASK_STATE_FILE` 勾选（这俩是跟踪文档，不是功能代码）。
@@ -115,3 +126,4 @@ $ARGUMENTS
 - ✅ 区分"真没达成 AC"和"风格/锦上添花"，🔴 只放真正的验收失败。
 - ✅ 验证命令、被验代码、验收标准和 `COMPLETION.md` 必须来自同一个 Feature Worktree/分支；不得用主干运行结果替代。
 - ✅ **测试资产体检**：只清理被明确标成 ephemeral 的探索/诊断文件；历史 Bug、公共契约、鉴权安全、状态机/领域不变量、迁移、并发事务和共享核心的回归测试必须保留。误删高价值测试或用临时探针替代持久覆盖，列为 🔴 必修。
+- ✅ 一次 `/sdd:verify` 运行最多派一个 feature Reviewer；禁止按任务或 Wave 循环派审查 agent。

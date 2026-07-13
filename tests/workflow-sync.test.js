@@ -50,7 +50,7 @@ function workflowTask(id, overrides = {}) {
     depends: [],
     doneWhen: `${id} behavior is verified`,
     risk: 'low',
-    review: 'required',
+    review: 'feature-final(api compatibility)',
     testPolicy: 'persistent',
     resources: [],
     gateIsolation: 'scoped',

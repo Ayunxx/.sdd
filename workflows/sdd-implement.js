@@ -423,7 +423,7 @@ function createSddWorkflowCore() {
       }
       const policyPatterns = {
         risk: /^(?:low|medium|high)(?:$|[\s(（:：])/,
-        review: /^required(?:$|[\s(（:：])/,
+        review: /^(?:feature-final|required)(?:$|[\s(（:：])/,
         testPolicy: /^(?:persistent|ephemeral|none)(?:$|[\s(（:：])/,
         gateIsolation: /^(?:scoped|wave-exclusive)(?:$|[\s(（:：])/,
       }
@@ -433,8 +433,8 @@ function createSddWorkflowCore() {
         }
       }
       if (typeof task.risk === 'string' && /^high(?:$|[\s(（:：])/i.test(task.risk.trim())
-        && !(typeof task.review === 'string' && /^required(?:$|[\s(（:：])/i.test(task.review.trim()))) {
-        errors.push({ code: 'HIGH_RISK_REVIEW_REQUIRED', taskId, message: `high-risk task ${taskId} must use Review: required` })
+        && !(typeof task.review === 'string' && /^(?:feature-final|required)(?:$|[\s(（:：])/i.test(task.review.trim()))) {
+        errors.push({ code: 'HIGH_RISK_REVIEW_REQUIRED', taskId, message: `high-risk task ${taskId} must declare Review: feature-final(<focus>); legacy required is accepted` })
       }
       if (!Array.isArray(task.boundary) || task.boundary.length === 0) {
         errors.push({ code: 'INVALID_BOUNDARY', taskId, message: `task ${taskId} boundary must be a non-empty array` })
@@ -550,7 +550,7 @@ function createSddWorkflowCore() {
       if (selectedWaveIndexes.size > 1) {
         errors.push({
           code: 'MULTI_WAVE_RUN_SELECTION',
-          message: 'one Workflow invocation may execute exactly one Wave; review and checkpoint it before starting the next Wave',
+          message: 'one Workflow invocation may execute exactly one Wave; verify and checkpoint it before starting the next Wave',
         })
       }
       normalizedRunTaskIds = runTaskIds
@@ -863,13 +863,13 @@ function implPrompt(t, feedback, ctx) {
     `任务 ${t.id}: ${t.what}`,
     `Boundary（唯一可写范围，越界=失败）: ${(t.boundary || []).join(', ')}`,
     `Refs: ${t.refs || '（无）'} · Done when: ${t.doneWhen || '见 Refs'}`,
-    `Risk: ${t.risk || '未标注（按实际影响保守判断）'} · Review: ${t.review || 'missing (block)'} · Test policy: ${t.testPolicy || '按 constitution §4 风险分层'}`,
+    `Risk: ${t.risk || '未标注（按实际影响保守判断）'} · Final review focus（仅元数据，不在实现期派 Reviewer）: ${t.review || 'missing (block)'} · Test policy: ${t.testPolicy || '按 constitution §4 风险分层'}`,
     `Exclusive resources: ${(t.resources || []).join(', ') || 'none'} · Gate isolation: ${t.gateIsolation || 'missing (block)'}`,
     `领域能力包 specs/stacks/${t.domain}.md: ${pack}（优先用其 §7 本层门禁，否则 constitution §3）`,
     `注入 skill: ${skills}`,
     t.isolation === 'worktree' ? '隔离: 在独立 worktree 实现，事后由编排器合并。' : '隔离: 当前工作树，绝不碰 Boundary 外文件。',
     '关键契约/安全/历史缺陷所需回归测试必须作为实现资产写入 Boundary；禁止 skip/only、恒真断言、过宽 mock、禁用检查、降低覆盖率或删除既有回归。完成代码修改后只报 implemented，门禁由另一个 fresh verifier 执行。',
-    feedback ? `\n## 编排器转述的结构化返工项（来自独立 Verifier/Reviewer）\n${feedback}` : '',
+    feedback ? `\n## 编排器转述的结构化返工项（来自独立 Verifier 或最终 feature Reviewer）\n${feedback}` : '',
   ].join('\n')
 }
 

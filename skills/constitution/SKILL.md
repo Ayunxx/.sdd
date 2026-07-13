@@ -54,13 +54,13 @@ $ARGUMENTS
 - 遵循的设计原则（SOLID / 高内聚低耦合 / DRY / KISS / YAGNI）；服务端/全栈的高可用约定（超时/重试/熔断/降级/幂等）
 
 ## 3. Code Quality Gate / 代码质量门禁（钉死命令，工具说了算）
-> 风格一致性靠确定性工具强制，不靠 AI 自觉。Implementer 只修改；全新 Verifier 使用下面的**非写入检查命令**独立核对；全新 Reviewer 再审真实 diff。合并门运行编译/类型检查、架构 fitness 与受影响持久回归测试。填具体命令，别留空话。
+> 风格一致性靠确定性工具强制，不靠 AI 自觉。Implementer 只修改；全新 Verifier 使用下面的**非写入检查命令**独立核对。所有任务完成后，`/sdd:verify` 只派一次全新 Reviewer 审整个 feature 的真实 diff；合并门运行编译/类型检查、架构 fitness 与受影响持久回归测试。填具体命令，别留空话。
 > ＊全栈 monorepo 各层（包）命令不同时，可在对应能力包 `specs/stacks/<domain>.md §7 本层门禁` 声明覆盖本默认。
 - **Format check（非写入）:** [如 `prettier --check <files>` / `ruff format --check <files>` / `gofmt -l <files>`；Verifier 禁止执行 `--write`/`--fix`]
 - **Lint:** [如 `eslint .` / `ruff check .` / `golangci-lint run`]
 - **Typecheck:** [如 `tsc --noEmit` / `mypy .`；无则 N/A]
 - **Test（实现期相关测试）:** [如 `npm test -- <affected>` / `pytest tests/<mod>` / `mvn -pl <module> -am test`；按 §4 决定测试持久化或仅作临时证据]
-> ⚠️ **角色与门分离**：Implementer 终端只修改；fresh Verifier 终端运行本任务非写入门禁并产出证据；fresh Reviewer 只读审查。主终端 `/sdd:worktree finish` 再运行合并门。三个角色不得复用上下文或互相自签。
+> ⚠️ **角色与门分离**：Implementer 终端只修改；fresh Verifier 终端运行本任务非写入门禁并产出证据。实现期间禁止为单任务立即派 Reviewer；fresh Reviewer 只在 `/sdd:verify` 对完整 feature diff 做一次只读审查。主终端 `/sdd:worktree finish` 再运行合并门。各角色不得复用上下文或互相自签。
 > ⚠️ **并发写门禁/资源隔离**：worker 的 formatter/fixer 只能显式接收本任务 Boundary/changed files；包级或仓库级写门禁移到 Wave checkpoint 串行执行。端口、测试 DB/schema、缓存、临时目录、浏览器 profile 必须按 task 唯一；无法隔离的任务独占 Wave。
 - **Config 文件:** [.editorconfig · 格式化/lint 配置 · `.gitattributes`（统一换行 LF/CRLF）]
 - **Error handling / Logging:** [统一约定]
@@ -80,7 +80,7 @@ $ARGUMENTS
 - **相称且复用优先**：改已有能力优先向现有测试类/fixture 增加用例；相关 AC 用参数化或同一测试组覆盖；能用轻量单测就不滥用重型集成测试。
 - **受影响测试进入合并门**：本地/CI 至少执行改动模块及依赖范围内的持久回归测试；全量回归可放在 PR 或 nightly，不要求每次本地执行。
 - ❌ 不允许只有实现者口头声称“测过”而没有命令/退出码/日志证据；❌ 不允许为了减少测试数量删除高价值回归。
-- **测试完整性**：禁止用 `skip`/`only`、恒真断言、空测试、过宽 mock、禁用类型/lint、降低覆盖率阈值或删除既有高价值回归来换取绿灯；确有例外必须记录位置、理由并经独立 reviewer 批准。
+- **测试完整性**：禁止用 `skip`/`only`、恒真断言、空测试、过宽 mock、禁用类型/lint、降低覆盖率阈值或删除既有高价值回归来换取绿灯；确有例外必须记录位置、理由，并由 `/sdd:verify` 的独立 feature Reviewer 审查。
 
 ## 5. AI Guardrails / AI 红线
 > Claude 在本项目中**必须遵守**的硬性约束。
@@ -88,8 +88,8 @@ $ARGUMENTS
 - 永远要做：（如 改动必须可追溯到某条 requirement、破坏性操作先确认）
 
 ## 6. Definition of Done / 完成标准
-- **任务级**：任务按 `pending → implementing → implemented → verifying → verified → reviewing → passed` 推进。每阶段使用全新隔离上下文：Implementer 只修改，Verifier 只核对且不得改变工作树，Reviewer 只审查。Done when/AC 逐条有 Verifier 行为证据，§3 非写入门禁通过，并经 Reviewer PASS 后才能完成。空结果、`not_run`、证据缺失、核对副作用或 Reviewer 非 PASS 一律失败关闭。
-- **功能级（合并门）**：合并到主干前，改动模块编译/类型检查 + fitness + 受影响持久回归测试全绿；`/sdd:verify` 按 AC 提供行为证据。
+- **任务级**：任务按 `pending → implementing → implemented → verifying → verified → passed` 推进。每阶段使用全新隔离上下文：Implementer 只修改，Verifier 只核对且不得改变工作树。Done when/AC 逐条有 Verifier 行为证据且 §3 非写入门禁通过后即可完成；实现期不得追加逐任务 Reviewer。空结果、`not_run`、证据缺失或核对副作用一律失败关闭。
+- **功能级（最终评审 + 合并门）**：所有任务完成后，`/sdd:verify` 对完整 feature diff 只派一次 fresh Reviewer，并按 AC 提供行为证据；Reviewer 非 PASS 或 AC 未通过都不得收尾。合并到主干前，改动模块编译/类型检查 + fitness + 受影响持久回归测试全绿。
 
 ## 7. Stacks & Skills / 能力包与注入技能
 > 声明本项目覆盖哪些开发领域（注入对应能力包），以及要注入的 Claude Code skill。详见 specs/stacks/*.md。

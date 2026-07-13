@@ -47,7 +47,7 @@ $ARGUMENTS
 
 ## Legend
 [ ] 未开始 · [~] 进行中 · [x] 完成 · [!] 阻塞(需人介入)
-> `[x]` 只表示 passed：fresh Implementer 已实现、fresh Verifier 已提交验收/门禁证据且未修改工作树、fresh Reviewer 已 PASS。任一中间阶段保持 `[~]`。
+> `[x]` 只表示 passed：fresh Implementer 已实现、fresh Verifier 已提交验收/门禁证据且未修改工作树。实现期不派逐任务 Reviewer；整个 feature 的独立审查统一在 `/sdd:verify` 执行。
 
 ## Tasks
 - [ ] **T1** <标题>
@@ -56,7 +56,7 @@ $ARGUMENTS
   - Depends: —
   - Refs: design §3 / AC1
   - Risk: high（迁移；不可逆数据风险）
-  - Review: required（独立 code-reviewer）
+  - Review: feature-final（最终整体审查重点：迁移/回滚/数据兼容）
   - Test policy: persistent（迁移/契约回归；测试文件也必须列入 Boundary）
   - Resources: `db-schema:app`（端口/测试库/缓存/临时目录等独占资源；无则 `[]`）
   - Gate isolation: wave-exclusive（迁移或包级写门禁必须独占 Wave）
@@ -68,7 +68,7 @@ $ARGUMENTS
   - Depends: T1
   - Refs: design §4 / AC1
   - Risk: high（鉴权/公共 API）
-  - Review: required（独立 code-reviewer）
+  - Review: feature-final（最终整体审查重点：鉴权/公共 API）
   - Test policy: persistent（鉴权/公共 API）
   - Resources: `port:4173`, `test-db:auth-t2`
   - Gate isolation: scoped（Verifier 只运行本任务 Boundary 的非写入检查；禁止 `--write`/`--fix`）
@@ -86,15 +86,15 @@ $ARGUMENTS
 | AC1 | T1, T2 |
 
 ## Implementation Evidence / 实现证据（由 /sdd:implement 当场追加）
-| Task/Wave | Transition / Verdict | Baseline | Actual diff | Acceptance | Gates | Reviewer / Residual risk |
-|-----------|----------------------|----------|-------------|------------|-------|--------------------------|
+| Task/Wave | Transition / Verdict | Baseline | Actual diff | Acceptance | Gates |
+|-----------|----------------------|----------|-------------|------------|-------|
 ```
 
 5b. **自动对齐自检 + 反压自修（任务层把关，默认开）**：tasks.md 写完后，对照 design/requirements 做一遍**覆盖与对齐自检**（即 `/sdd:analyze` 的 design↔tasks 部分），按 `/sdd:specify` 的「## 规格反压评审协议」精神处理：
    - **覆盖**：每条 AC / 每个 design 元素是否都有任务承接？**有缺口 = blocking** → 补任务，再自检（最多 2 轮）。
    - **不越界**：有没有任务做了 design 之外的事（范围蔓延）？标出来。
    - **Boundary/资源健全**：先验证 Boundary 语法（精确文件无尾斜，目录必须 `dir/` 或 `dir/**`），再确认同一 Wave 内 Boundary 与 `Resources` 均不得重叠；使用 `Gate isolation: wave-exclusive` 的任务必须独占 Wave。端口、测试库/schema、缓存、临时目录、浏览器 profile 等共享状态须按 task 唯一命名；做不到就重切/串行。
-   - **证据落点**：必须保留空的 `## Implementation Evidence` 固定表头，持久化三角色状态流转、实现/核对快照、Done when/AC、门禁与逐任务 Reviewer verdict。
+   - **证据落点**：必须保留空的 `## Implementation Evidence` 固定表头，持久化双角色状态流转、实现/核对快照、Done when/AC 与门禁。Feature Reviewer verdict 由 `/sdd:verify` 统一写入 `COMPLETION.md`，不在每任务重复记录。
    - 2 轮仍有覆盖缺口 → 停下报用户（可能是 design 本身缺，需回 `/sdd:plan`）。**意图红线**：只补"漏拆的任务/修边界"，不擅自加 design 没有的功能范围。
    - 更深的跨产物一致性（含已有代码）由独立的 `/sdd:analyze` 兜底——本步是生成即查的轻量前哨。
 
@@ -112,14 +112,14 @@ $ARGUMENTS
 3. **契约先行、扇出在后**：先一个任务定类型/接口/契约（地基），之后只依赖契约的任务全进**同一宽波**并行。避免 `A→B→C→D` 长链(=4 波)，改成 `地基 → [B,C,D,E]` 一波扇出。
 4. **每个任务显式标风险、评审与测试策略**：
    - `Risk: high|medium|low（理由）`；鉴权/安全、公共契约、迁移、状态机/领域不变量、并发事务、共享核心、不可逆操作或跨模块热点一律 high。
-   - `Review: required`：每个任务都必须由未参与实现/核对的 fresh `code-reviewer` 在标完成前审查；不再允许 `wave-sample`，任务大小只影响审查深度，不取消角色隔离。
+   - `Review: feature-final（<关注点>）`：只标记该任务在功能最终整体审查中的风险关注点，**不是实现期派发指令**。`/sdd:implement` 不为单任务派 Reviewer；所有任务完成后由 `/sdd:verify` 对完整 feature diff 只派一次 fresh `code-reviewer`。旧规格的 `Review: required` 按同义兼容。
    - `Test policy: persistent|ephemeral|none(<理由>)`。
    - 历史 Bug、公共契约、鉴权安全、状态机/不变量、迁移、并发事务、共享核心能力 → 必须 `persistent`，并把测试文件加入 Boundary。
    - 探索、一次性诊断、硬件/外部环境探针 → 可 `ephemeral`，但要记录命令证据。
    - 纯文档/注释才可 `none`。测试通常随实现任务一起做；只有 TDD 契约先行或共享测试基座时才拆成独立任务。
    - 测试相称且复用优先：小改写少量聚焦用例，优先扩展既有测试，不为每条 AC 新建一个测试类，也不删除高价值回归。
    - `Resources: []|<资源标识...>` 必须列出会独占/写入的端口、测试数据库/schema、缓存、临时目录、模拟器/浏览器 profile；同 Wave 标识不得重复。
-   - `Gate isolation: scoped|wave-exclusive`：worker 只可对 Boundary/实际 changed files 运行写入型 formatter/fixer；必须扫写整个 package/repo 的 gate 标 `wave-exclusive` 并独占 Wave，或移到 Wave reviewer 后的串行 checkpoint barrier。
+   - `Gate isolation: scoped|wave-exclusive`：worker 只可对 Boundary/实际 changed files 运行写入型 formatter/fixer；必须扫写整个 package/repo 的 gate 标 `wave-exclusive` 并独占 Wave，或移到 Wave 完成后的串行 checkpoint barrier。
 5. **全栈用垂直切片**：一个功能的 db/api/ui 各为独立 Boundary 任务，跨层并行。
 6. **照能力包的 Boundary 模式切**：server 按端点、前端按页面/组件、db 按迁移——天然不重叠的缝。
 7. **宽而浅 > 窄而深**：宁可一波多任务，别多波单任务。

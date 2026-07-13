@@ -315,7 +315,7 @@ function createSddWorkflowCore() {
       }
       const policyPatterns = {
         risk: /^(?:low|medium|high)(?:$|[\s(（:：])/,
-        review: /^required(?:$|[\s(（:：])/,
+        review: /^(?:feature-final|required)(?:$|[\s(（:：])/,
         testPolicy: /^(?:persistent|ephemeral|none)(?:$|[\s(（:：])/,
         gateIsolation: /^(?:scoped|wave-exclusive)(?:$|[\s(（:：])/,
       }
@@ -325,8 +325,8 @@ function createSddWorkflowCore() {
         }
       }
       if (typeof task.risk === 'string' && /^high(?:$|[\s(（:：])/i.test(task.risk.trim())
-        && !(typeof task.review === 'string' && /^required(?:$|[\s(（:：])/i.test(task.review.trim()))) {
-        errors.push({ code: 'HIGH_RISK_REVIEW_REQUIRED', taskId, message: `high-risk task ${taskId} must use Review: required` })
+        && !(typeof task.review === 'string' && /^(?:feature-final|required)(?:$|[\s(（:：])/i.test(task.review.trim()))) {
+        errors.push({ code: 'HIGH_RISK_REVIEW_REQUIRED', taskId, message: `high-risk task ${taskId} must declare Review: feature-final(<focus>); legacy required is accepted` })
       }
       if (!Array.isArray(task.boundary) || task.boundary.length === 0) {
         errors.push({ code: 'INVALID_BOUNDARY', taskId, message: `task ${taskId} boundary must be a non-empty array` })
@@ -442,7 +442,7 @@ function createSddWorkflowCore() {
       if (selectedWaveIndexes.size > 1) {
         errors.push({
           code: 'MULTI_WAVE_RUN_SELECTION',
-          message: 'one Workflow invocation may execute exactly one Wave; review and checkpoint it before starting the next Wave',
+          message: 'one Workflow invocation may execute exactly one Wave; verify and checkpoint it before starting the next Wave',
         })
       }
       normalizedRunTaskIds = runTaskIds

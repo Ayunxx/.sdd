@@ -66,6 +66,28 @@ test('backlog contract uses one canonical file and an atomic permanent ID reserv
   assert.match(status, /ID CONFLICT/)
 })
 
+test('implementation defers code review to one feature-level verify pass', async () => {
+  const [implement, auto, verify, tasks, constitution, reviewer] = await Promise.all([
+    text('skills/implement/SKILL.md'),
+    text('skills/auto/SKILL.md'),
+    text('skills/verify/SKILL.md'),
+    text('skills/tasks/SKILL.md'),
+    text('skills/constitution/SKILL.md'),
+    text('agents/code-reviewer.md'),
+  ])
+
+  assert.match(implement, /实现期不派代码审查/)
+  assert.match(implement, /不得立即派 `code-reviewer`/)
+  assert.doesNotMatch(implement, /reviewing → passed/)
+  assert.doesNotMatch(implement, /必须逐任务评审/)
+  assert.match(auto, /实现期间禁止 Implementer 或编排器为单任务立即派 Reviewer/)
+  assert.match(verify, /整个 feature 只派一次/)
+  assert.match(verify, /不得按任务循环派发/)
+  assert.match(tasks, /Review: feature-final/)
+  assert.match(constitution, /实现期不得追加逐任务 Reviewer/)
+  assert.match(reviewer, /不得在实现期按任务或 Wave 重复派发/)
+})
+
 test('finish protocol constructs fixed-parent commits and publishes refs with expected-old CAS', async () => {
   const worktree = await text('skills/worktree/SKILL.md')
   assert.match(worktree, /sdd-finish-lock-v1/)

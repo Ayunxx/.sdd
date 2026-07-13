@@ -25,7 +25,7 @@ model: inherit
 2. 只执行**非写入**门禁：format check、lint（无 fix）、typecheck/build check、相关 test。命令不得带 `--write`、`--fix` 或任何会修改源码、快照、锁文件、配置、测试数据基线的选项；项目只有写入型门禁时返回 blocked，要求补非写入 check 命令。
 3. 逐条核对 Done when 与 Refs 指向的 AC，记录测试名、命令输出、实测值或可定位日志。无法实际验证时记 `not_run` 并返回 fail/blocked，不得凭代码阅读判绿。
 4. 运行前后都读取 Git 状态。若 Verifier 自己造成任何工作树变化，立即返回 blocked 并报告路径；Verifier 不得修复、格式化或更新快照。
-5. 只提交证据，不评价代码风格、架构优雅性或实现方案；这些属于 Reviewer。
+5. 只提交证据，不评价代码风格、架构优雅性或实现方案；整个 feature 的这类审查由后续 `/sdd:verify` 统一派一次 Reviewer 完成，不在本任务后立即派发。
 
 ## 输出契约
 
